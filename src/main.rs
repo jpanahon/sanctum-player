@@ -1,6 +1,40 @@
 use eframe::egui;
 use std::error::Error;
 
+struct Song<R: std::io::Read + std::io::Seek> {
+    title: String,
+    artist: String,
+    decoder: Option<rodio::Decoder<R>>,
+}
+
+fn load_songs(main_dir: String) -> Vec<Song<std::io::BufReader<std::fs::File>>> {
+    let mut songs: Vec<Song<std::io::BufReader<std::fs::File>>> = Vec::new();
+    for entry in std::fs::read_dir(main_dir).expect("Music folder found!") {
+        let entry = entry.expect("Entries found!");
+        let path = entry.path();
+        let tag = audiotags::Tag::new()
+            .read_from_path(&path)
+            .expect("No tag found!");
+
+        let song_file = std::fs::File::open(path).expect("Can't open file");
+        let decoder = rodio::Decoder::try_from(song_file).expect("Can't create decoder");
+
+        if let Some(title) = tag.title()
+            && let Some(artist) = tag.artist()
+        {
+            let song = Song {
+                title: title.to_string(),
+                artist: artist.to_string(),
+                decoder: Some(decoder),
+            };
+
+            songs.push(song);
+        }
+    }
+
+    songs
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_maximized(true),
@@ -13,7 +47,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let play_symbols = ["▶", "⏸"];
     let mut play_state = play_symbols[0];
 
-    eframe::run_simple_native("Sanctum Player", options, move |ctx, _frame| {
+    let mut songs: Vec<Song<std::io::BufReader<std::fs::File>>> =
+        load_songs("/home/morose/Music/My Playlist/".to_string());
+
+    let _ = eframe::run_simple_native("Sanctum Player", options, move |ctx, _frame| {
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 let play_button = egui::Button::new(play_state)
@@ -39,19 +76,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for entry in
-                    std::fs::read_dir("/home/morose/Music/My Playlist/").expect("Music folder found!")
-                {
-                    let entry = entry.expect("Entries found!");
-                    let path = entry.path();
-                    let tag = audiotags::Tag::new()
-                        .read_from_path(&path)
-                        .expect("No tag found!");
-
-                    if let Some(title) = tag.title() {
-                        if ui.label(format!("{}", title)).clicked() {
-                            let song_file = std::fs::File::open(path).unwrap();
-                            let decoder = rodio::Decoder::try_from(song_file).unwrap();
+                for song in &mut songs {
+                    if ui
+                        .label(format!("{}\n{}\n", song.title, song.artist))
+                        .clicked()
+                    {
+                        if let Some(decoder) = song.decoder.take() {
                             sink.append(decoder);
                             play_state = play_symbols[1];
                         }
@@ -59,5 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             });
         });
-    }) // run_simple_native
+    }); // run_simple_native
+
+    Ok(())
 }
