@@ -1,0 +1,15 @@
+{
+  "current_playlist": 0,
+  "playlists": [
+    {
+      "name": "My Playlist",
+      "path": "/home/morose/Music/My Playlist/"
+    },
+    {
+      "name": "Another Playlist",
+      "path": "/home/morose/Music/Another Playlist"
+    }
+  ],
+  "last_track_index": 35,
+  "volume": 5
+}
