@@ -1,0 +1,11 @@
+{
+  "current_playlist": 0,
+  "playlists": [
+    {
+      "name": "",
+      "path": ""
+    },
+  ],
+  "last_track_index": 0,
+  "volume": 100
+}
