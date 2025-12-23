@@ -106,6 +106,43 @@ fn main() -> Result<(), Box<dyn Error>> {
         player.process(&songs);
 
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
+            let prev_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowLeft);
+            let skip_key =
+                egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowRight);
+
+            let vol_up = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowUp);
+            let vol_down = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowDown);
+
+            let shufl_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::S);
+
+            if ui.input(|i| i.key_pressed(egui::Key::Space)) {
+                player.playback();
+            }
+
+            if ui.input_mut(|i| i.consume_shortcut(&prev_key)) {
+                player.previous(&songs);
+            }
+
+            if ui.input_mut(|i| i.consume_shortcut(&skip_key)) {
+                player.skip(&songs);
+            }
+
+            if ui.input_mut(|i| i.consume_shortcut(&vol_up)) {
+                player_vol += 1;
+                player.volume(player_vol);
+                config.set_volume(player_vol);
+            }
+
+            if ui.input_mut(|i| i.consume_shortcut(&vol_down)) {
+                player_vol -= 1;
+                player.volume(player_vol);
+                config.set_volume(player_vol);
+            }
+
+            if ui.input_mut(|i| i.consume_shortcut(&shufl_key)) {
+                player.shuffle();
+            }
+
             let play_button = egui::Button::new(
                 egui::RichText::new(play_state).font(egui::FontId::proportional(18.0)),
             )
