@@ -1,6 +1,5 @@
 use rand::Rng;
 
-#[derive(Debug, serde::Deserialize)]
 pub struct Song {
     pub title: String,
     pub artist: String,

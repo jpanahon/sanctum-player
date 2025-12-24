@@ -1,10 +1,9 @@
-#![allow(missing_docs)]
-
 use eframe::egui;
 
 use lofty::prelude::*;
 use lofty::probe::Probe;
 use std::error::Error;
+use std::sync::Arc;
 
 mod config;
 use config::Config;
@@ -13,7 +12,10 @@ pub mod player;
 use player::Player;
 use player::Song;
 
-fn load_songs(main_dir: String) -> Vec<Song> {
+fn load_songs(
+    main_dir: String,
+    covers: &mut std::collections::HashMap<String, Arc<egui::ColorImage>>,
+) -> Vec<Song> {
     let mut songs: Vec<Song> = Vec::new();
 
     for entry in std::fs::read_dir(main_dir).expect("Music folder not found!") {
@@ -44,6 +46,22 @@ fn load_songs(main_dir: String) -> Vec<Song> {
             path: song_path,
             duration: seconds,
         };
+
+        covers.entry(song.album.clone()).or_insert_with(|| {
+            let image = (tag.pictures())[0].clone();
+            let image_data = image::load_from_memory(image.data()).expect("Can't load album art!");
+
+            let cover_data = image_data.resize_exact(48, 48, image::imageops::Nearest);
+
+            let image_size = [cover_data.width() as _, cover_data.height() as _];
+            let image_buffer = cover_data.to_rgba8();
+            let pixels = image_buffer.as_flat_samples();
+
+            Arc::new(egui::ColorImage::from_rgba_unmultiplied(
+                image_size,
+                pixels.as_slice(),
+            ))
+        });
 
         songs.push(song);
     }
@@ -87,13 +105,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     player.sink.set_volume(player_vol as f32 / 100.);
 
     let current_playlist = &(config.get_playlists())[config.current_playlist()];
-    let mut songs = load_songs(current_playlist.path.clone());
+
+    let mut covers: std::collections::HashMap<String, Arc<egui::ColorImage>> =
+        std::collections::HashMap::new();
+
+    let mut songs = load_songs(current_playlist.path.clone(), &mut covers);
 
     songs.sort_unstable_by_key(|item| item.artist.clone());
 
     let mut song_queue: Vec<String> = Vec::new();
 
     let _ = eframe::run_simple_native("Sanctum Player", options, move |ctx, _frame| {
+        egui_extras::install_image_loaders(ctx);
         ctx.request_repaint();
         let play_state;
 
@@ -183,6 +206,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                 columns[0].horizontal_centered(|ui| {
                     if !player.done() {
                         let current_track = &songs[player.current_index];
+
+                        if let Some(cover_art) = covers.get(&current_track.album) {
+                            let album_art = ctx.load_texture(
+                                "Album Art",
+                                egui::ImageData::from(cover_art.clone()),
+                                egui::TextureOptions::default(),
+                            );
+
+                            ui.add(egui::Image::new(&album_art));
+                        }
+
                         ui.heading(format!("{}\n{}", current_track.title, current_track.artist));
                     } else {
                         ui.heading("No song playing!");
@@ -250,12 +284,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         egui::SidePanel::left("playlists").show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.heading("Playlists");
+                ui.heading(egui::RichText::new("Playlists").font(egui::FontId::proportional(24.0)));
 
                 for index in 0..config.get_playlists().len() {
                     let playlist_name = (config.get_playlists())[index].name.clone();
-                    if ui.label(playlist_name).clicked() {
+                    if ui
+                        .label(
+                            egui::RichText::new(playlist_name)
+                                .font(egui::FontId::proportional(18.0)),
+                        )
+                        .clicked()
+                    {
                         config.set_playlist(index);
+                        config.set_track(0);
                     }
                 }
 
@@ -269,66 +310,79 @@ fn main() -> Result<(), Box<dyn Error>> {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.vertical_centered(|ui| {
-                    egui::Grid::new("song_list").striped(true).show(ui, |ui| {
-                        for list_index in 0..songs.len() {
-                            let song = &songs[list_index];
+                    egui::Grid::new("song_list")
+                        .striped(true)
+                        .min_row_height(48.)
+                        .show(ui, |ui| {
+                            for list_index in 0..songs.len() {
+                                let song = &songs[list_index];
 
-                            ui.label(
-                                egui::RichText::new(format!("{:02}", list_index + 1))
-                                    .font(egui::FontId::proportional(18.0)),
-                            );
+                                ui.label(
+                                    egui::RichText::new(format!("{:02}", list_index + 1))
+                                        .font(egui::FontId::proportional(18.0)),
+                                );
 
-                            let song_title = egui::Button::new(
-                                egui::RichText::new(format!("{}", song.title))
-                                    .font(egui::FontId::proportional(18.0)),
-                            )
-                            .frame(false);
+                                if let Some(cover_art) = covers.get(&song.album) {
+                                    let album_art = ctx.load_texture(
+                                        "Album Art",
+                                        egui::ImageData::from(cover_art.clone()),
+                                        egui::TextureOptions::default(),
+                                    );
 
-                            let song_title = ui.add(song_title);
-
-                            if song_title.clicked() {
-                                if song_queue.len() > 0 {
-                                    song_queue.clear();
+                                    ui.add(egui::Image::new(&album_art));
                                 }
 
-                                player.set_index(list_index);
-                                config.set_track(list_index);
+                                let song_title = egui::Button::new(
+                                    egui::RichText::new(format!("{}", song.title))
+                                        .font(egui::FontId::proportional(18.0)),
+                                )
+                                .frame(false);
 
-                                if !player.idle() {
-                                    if player.sink.is_paused() {
-                                        player.sink.play();
+                                let song_title = ui.add(song_title);
+
+                                if song_title.clicked() {
+                                    if song_queue.len() > 0 {
+                                        song_queue.clear();
                                     }
 
-                                    player.sink.skip_one();
+                                    player.set_index(list_index);
+                                    config.set_track(list_index);
+
+                                    if !player.idle() {
+                                        if player.sink.is_paused() {
+                                            player.sink.play();
+                                        }
+
+                                        player.sink.skip_one();
+                                    }
                                 }
+
+                                song_title.context_menu(|ui| {
+                                    if ui.button("Add to queue").clicked() {
+                                        println!("Test");
+                                    }
+                                });
+
+                                ui.label(
+                                    egui::RichText::new(format!("{}", song.artist))
+                                        .font(egui::FontId::proportional(18.0)),
+                                );
+
+                                ui.label(
+                                    egui::RichText::new(format!("{}", song.album))
+                                        .font(egui::FontId::proportional(18.0)),
+                                );
+
+                                let timestamp = format_timestamp(song.duration);
+
+                                ui.label(
+                                    egui::RichText::new(format!("{}", timestamp))
+                                        .font(egui::FontId::proportional(18.0)),
+                                );
+
+                                ui.end_row();
                             }
-
-                            song_title.context_menu(|ui| {
-                                if ui.button("Add to queue").clicked() {
-                                    println!("Test");
-                                }
-                            });
-
-                            ui.label(
-                                egui::RichText::new(format!("{}", song.artist))
-                                    .font(egui::FontId::proportional(18.0)),
-                            );
-
-                            ui.label(
-                                egui::RichText::new(format!("{}", song.album))
-                                    .font(egui::FontId::proportional(18.0)),
-                            );
-
-                            let timestamp = format_timestamp(song.duration);
-
-                            ui.label(
-                                egui::RichText::new(format!("{}", timestamp))
-                                    .font(egui::FontId::proportional(18.0)),
-                            );
-
-                            ui.end_row();
-                        }
-                    });
+                        });
                 });
             });
         });
