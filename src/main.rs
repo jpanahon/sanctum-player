@@ -2,6 +2,8 @@ use eframe::egui;
 
 use lofty::prelude::*;
 use lofty::probe::Probe;
+
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 
@@ -12,10 +14,7 @@ pub mod player;
 use player::Player;
 use player::Song;
 
-fn load_songs(
-    main_dir: String,
-    covers: &mut std::collections::HashMap<String, Arc<egui::ColorImage>>,
-) -> Vec<Song> {
+fn load_songs(main_dir: String, covers: &mut HashMap<String, Arc<egui::ColorImage>>) -> Vec<Song> {
     let mut songs: Vec<Song> = Vec::new();
 
     for entry in std::fs::read_dir(main_dir).expect("Music folder not found!") {
@@ -25,13 +24,15 @@ fn load_songs(
         let song_path = path.display().to_string();
 
         let tag_file = Probe::open(path.as_path())
-            .expect("Can't find file!")
+            .expect(format!("Can't find file: {}", song_path).as_str())
             .read()
-            .expect("Can't read file!");
+            .expect(format!("Can't read file: {}", song_path).as_str());
 
         let tag = match tag_file.primary_tag() {
             Some(primary_tag) => primary_tag,
-            None => tag_file.first_tag().expect("No tags found!"),
+            None => tag_file
+                .first_tag()
+                .expect(format!("No tags found!: {}", song_path).as_str()),
         };
 
         let properties = tag_file.properties();
@@ -49,7 +50,8 @@ fn load_songs(
 
         covers.entry(song.album.clone()).or_insert_with(|| {
             let image = (tag.pictures())[0].clone();
-            let image_data = image::load_from_memory(image.data()).expect("Can't load album art!");
+            let image_data = image::load_from_memory(image.data())
+                .expect(format!("Can't load album art: {}", song.path).as_str());
 
             let cover_data = image_data.resize_exact(48, 48, image::imageops::Nearest);
 
@@ -106,8 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let current_playlist = &(config.get_playlists())[config.current_playlist()];
 
-    let mut covers: std::collections::HashMap<String, Arc<egui::ColorImage>> =
-        std::collections::HashMap::new();
+    let mut covers: HashMap<String, Arc<egui::ColorImage>> = HashMap::new();
 
     let mut songs = load_songs(current_playlist.path.clone(), &mut covers);
 
@@ -310,9 +311,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.vertical_centered(|ui| {
+                    let col_width = ui.max_rect().width() / 2.6;
                     egui::Grid::new("song_list")
                         .striped(true)
                         .min_row_height(48.)
+                        .max_col_width(col_width)
                         .show(ui, |ui| {
                             for list_index in 0..songs.len() {
                                 let song = &songs[list_index];
