@@ -4,17 +4,30 @@ use lofty::prelude::*;
 use lofty::probe::Probe;
 
 use std::collections::HashMap;
-use std::error::Error;
-use std::sync::Arc;
+use std::collections::HashSet;
 
 mod config;
 use config::Config;
 
 pub mod player;
 use player::Player;
+use player::Playlist;
 use player::Song;
 
-fn load_songs(main_dir: String, covers: &mut HashMap<String, Arc<egui::ColorImage>>) -> Vec<Song> {
+fn main() -> eframe::Result {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_maximized(true),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "Sanctum Player",
+        options,
+        Box::new(|cc| Ok(Box::new(Sanctum::new(cc)))),
+    )
+}
+
+fn load_songs(main_dir: String) -> Vec<Song> {
     let mut songs: Vec<Song> = Vec::new();
 
     for entry in std::fs::read_dir(main_dir).expect("Music folder not found!") {
@@ -44,31 +57,41 @@ fn load_songs(main_dir: String, covers: &mut HashMap<String, Arc<egui::ColorImag
             title: tag.title().as_deref().unwrap_or("Unknown").to_string(),
             artist: tag.artist().as_deref().unwrap_or("Unknown").to_string(),
             album: tag.album().as_deref().unwrap_or("Unknown").to_string(),
+            cover: (tag.pictures())[0].clone(),
             path: song_path,
             duration: seconds,
         };
-
-        covers.entry(song.album.clone()).or_insert_with(|| {
-            let image = (tag.pictures())[0].clone();
-            let image_data = image::load_from_memory(image.data())
-                .expect(format!("Can't load album art: {}", song.path).as_str());
-
-            let cover_data = image_data.resize_exact(48, 48, image::imageops::Nearest);
-
-            let image_size = [cover_data.width() as _, cover_data.height() as _];
-            let image_buffer = cover_data.to_rgba8();
-            let pixels = image_buffer.as_flat_samples();
-
-            Arc::new(egui::ColorImage::from_rgba_unmultiplied(
-                image_size,
-                pixels.as_slice(),
-            ))
-        });
 
         songs.push(song);
     }
 
     songs
+}
+
+fn load_cover_art(
+    ctx: &eframe::egui::Context,
+    covers: &mut HashMap<String, egui::TextureHandle>,
+    song: &Song,
+) {
+    covers.entry(song.album.clone()).or_insert_with(|| {
+        let image = song.cover.data();
+        let image_data = image::load_from_memory(image)
+            .expect(format!("Can't load album art: {}", song.path).as_str());
+
+        let cover_data = image_data.resize_exact(48, 48, image::imageops::Nearest);
+
+        let image_size = [cover_data.width() as _, cover_data.height() as _];
+        let image_buffer = cover_data.to_rgba8();
+        let pixels = image_buffer.as_flat_samples();
+
+        let color_image = egui::ColorImage::from_rgba_unmultiplied(image_size, pixels.as_slice());
+
+        ctx.load_texture(
+            song.album.clone(),
+            egui::ImageData::from(color_image),
+            egui::TextureOptions::default(),
+        )
+    });
 }
 
 fn format_timestamp(timestamp: u64) -> String {
@@ -78,56 +101,65 @@ fn format_timestamp(timestamp: u64) -> String {
     format!("{:02}:{:02}", minutes, seconds)
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_maximized(true),
-        ..Default::default()
-    };
+struct Sanctum {
+    player: Player,
+    volume: u32,
+    config: Config,
+    playlists: Vec<Playlist>,
+    songs: Vec<Song>,
+    covers: HashMap<String, egui::TextureHandle>,
+    loading_covers: HashSet<String>,
+}
 
-    let stream_handle = rodio::OutputStreamBuilder::open_default_stream()?;
+impl Sanctum {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+        let config_file = std::fs::read_to_string("config.json").expect("Can't find config file!");
+        let config: Config = serde_json::from_str(config_file.as_str()).expect("Can't parse JSON!");
+        let playlists = config.get_playlists().clone();
 
-    let config_file = std::fs::read_to_string("config.json").expect("Can't find config file!");
-    let mut config: Config = serde_json::from_str(config_file.as_str()).expect("Can't parse JSON!");
+        let current_playlist = (config.get_playlists())[config.current_playlist()].clone();
 
-    let play_symbols = ["▶", "⏸"];
+        let mut player: Player = Player {
+            current_index: config.get_last_track(),
+            prev_index: config.get_last_track(),
+            ..Default::default()
+        };
 
-    let mut player: Player = Player {
-        sink: rodio::Sink::connect_new(stream_handle.mixer()),
-        current_index: config.get_last_track(),
-        prev_index: config.get_last_track(),
-        repeat: false,
-        shuffle: false,
-        track_pos: 0,
-        volume: config.get_volume(),
-        skip: false,
-    };
+        let volume = config.get_volume();
+        player.volume(volume);
 
-    let mut player_vol: u32 = config.get_volume();
+        let covers: HashMap<String, egui::TextureHandle> = HashMap::new();
+        let loading_covers: HashSet<String> = HashSet::new();
 
-    player.sink.set_volume(player_vol as f32 / 100.);
+        let mut songs = load_songs(current_playlist.path.clone());
+        songs.sort_unstable_by_key(|item| item.artist.clone());
 
-    let current_playlist = &(config.get_playlists())[config.current_playlist()];
+        Self {
+            config: config,
+            player: player,
+            volume: volume,
+            playlists: playlists,
+            songs: songs,
+            covers: covers,
+            loading_covers: loading_covers,
+        }
+    }
+}
 
-    let mut covers: HashMap<String, Arc<egui::ColorImage>> = HashMap::new();
-
-    let mut songs = load_songs(current_playlist.path.clone(), &mut covers);
-
-    songs.sort_unstable_by_key(|item| item.artist.clone());
-
-    let mut song_queue: Vec<String> = Vec::new();
-
-    let _ = eframe::run_simple_native("Sanctum Player", options, move |ctx, _frame| {
-        egui_extras::install_image_loaders(ctx);
+impl eframe::App for Sanctum {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
         let play_state;
+        let play_symbols = ["▶", "⏸"];
 
-        if player.idle() {
+        if self.player.idle() {
             play_state = play_symbols[0];
         } else {
             play_state = play_symbols[1];
         }
 
-        player.process(&songs);
+        self.player.process(&self.songs);
 
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
             let prev_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowLeft);
@@ -140,31 +172,31 @@ fn main() -> Result<(), Box<dyn Error>> {
             let shufl_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::S);
 
             if ui.input(|i| i.key_pressed(egui::Key::Space)) {
-                player.playback();
+                self.player.playback();
             }
 
             if ui.input_mut(|i| i.consume_shortcut(&prev_key)) {
-                player.previous(&songs);
+                self.player.previous(&self.songs);
             }
 
             if ui.input_mut(|i| i.consume_shortcut(&skip_key)) {
-                player.skip(&songs);
+                self.player.skip(&self.songs);
             }
 
             if ui.input_mut(|i| i.consume_shortcut(&vol_up)) {
-                player_vol += 1;
-                player.volume(player_vol);
-                config.set_volume(player_vol);
+                self.volume += 1;
+                self.player.volume(self.volume);
+                self.config.set_volume(self.volume);
             }
 
             if ui.input_mut(|i| i.consume_shortcut(&vol_down)) {
-                player_vol -= 1;
-                player.volume(player_vol);
-                config.set_volume(player_vol);
+                self.volume -= 1;
+                self.player.volume(self.volume);
+                self.config.set_volume(self.volume);
             }
 
             if ui.input_mut(|i| i.consume_shortcut(&shufl_key)) {
-                player.shuffle();
+                self.player.shuffle();
             }
 
             let play_button = egui::Button::new(
@@ -184,7 +216,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .min_size(egui::Vec2::new(40.0, 40.0))
                     .frame(false);
 
-            let shufl_color = if player.is_shuffled() {
+            let shufl_color = if self.player.is_shuffled() {
                 egui::Color32::from_rgb(1, 92, 128)
             } else {
                 egui::Color32::from_rgb(180, 180, 180)
@@ -205,17 +237,21 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             ui.columns(3, |columns| {
                 columns[0].horizontal_centered(|ui| {
-                    if !player.done() {
-                        let current_track = &songs[player.current_index];
+                    if !self.player.done() {
+                        let current_track = &self.songs[self.player.current_index];
 
-                        if let Some(cover_art) = covers.get(&current_track.album) {
-                            let album_art = ctx.load_texture(
-                                "Album Art",
-                                egui::ImageData::from(cover_art.clone()),
-                                egui::TextureOptions::default(),
-                            );
+                        if let Some(cover_art) = self.covers.get(&current_track.album) {
+                            ui.add(egui::Image::new(cover_art));
+                        } else {
+                            ui.allocate_response(egui::vec2(48., 48.), egui::Sense::hover());
+                        }
 
-                            ui.add(egui::Image::new(&album_art));
+                        if !self.covers.contains_key(&current_track.album)
+                            && !self.loading_covers.contains(&current_track.album)
+                        {
+                            self.loading_covers.insert(current_track.album.clone());
+                            load_cover_art(ctx, &mut self.covers, current_track);
+                            self.loading_covers.remove(&current_track.album);
                         }
 
                         ui.heading(format!("{}\n{}", current_track.title, current_track.artist));
@@ -232,19 +268,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
 
                         if ui.add(prev_button).clicked() {
-                            player.previous(&songs);
+                            self.player.previous(&self.songs);
                         }
 
                         if ui.add(play_button).clicked() {
-                            player.playback();
+                            self.player.playback();
                         }
 
                         if ui.add(skip_button).clicked() {
-                            player.skip(&songs);
+                            self.player.skip(&self.songs);
                         }
 
                         if ui.add(shufl_button).clicked() {
-                            player.shuffle();
+                            self.player.shuffle();
                         }
                     });
 
@@ -252,9 +288,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         ui.spacing_mut().slider_width = ui.max_rect().width() - 50.;
                         ui.style_mut().visuals.slider_trailing_fill = true;
 
-                        let total_duration = songs[player.current_index].duration;
+                        let total_duration = self.songs[self.player.current_index].duration;
                         let time_slider =
-                            egui::Slider::new(&mut player.track_pos, 0..=total_duration)
+                            egui::Slider::new(&mut self.player.track_pos, 0..=total_duration)
                                 .logarithmic(false)
                                 .show_value(false)
                                 .clamping(egui::SliderClamping::Always)
@@ -263,7 +299,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         ui.add(time_slider);
                         ui.label(format!(
                             "{} / {}",
-                            format_timestamp(player.track_pos),
+                            format_timestamp(self.player.track_pos),
                             format_timestamp(total_duration)
                         ));
                     });
@@ -275,10 +311,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                     ui.label("🔈");
                     ui.style_mut().visuals.slider_trailing_fill = true;
 
-                    ui.add(egui::Slider::new(&mut player_vol, 0..=100));
+                    ui.add(egui::Slider::new(&mut self.volume, 0..=100));
 
-                    player.volume(player_vol);
-                    config.set_volume(player_vol);
+                    self.player.volume(self.volume);
+                    self.config.set_volume(self.volume);
                 });
             });
         }); // egui::TopBottomPanel
@@ -287,8 +323,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading(egui::RichText::new("Playlists").font(egui::FontId::proportional(24.0)));
 
-                for index in 0..config.get_playlists().len() {
-                    let playlist_name = (config.get_playlists())[index].name.clone();
+                for index in 0..self.playlists.len() {
+                    let playlist_name = self.playlists[index].name.clone();
                     if ui
                         .label(
                             egui::RichText::new(playlist_name)
@@ -296,14 +332,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                         )
                         .clicked()
                     {
-                        config.set_playlist(index);
-                        config.set_track(0);
+                        self.config.set_playlist(index);
+                        self.config.set_track(0);
                     }
-                }
-
-                for song in &song_queue {
-                    ui.label(song);
-                    ui.separator();
                 }
             });
         });
@@ -317,22 +348,30 @@ fn main() -> Result<(), Box<dyn Error>> {
                         .min_row_height(48.)
                         .max_col_width(col_width)
                         .show(ui, |ui| {
-                            for list_index in 0..songs.len() {
-                                let song = &songs[list_index];
+                            for list_index in 0..self.songs.len() {
+                                let song = &self.songs[list_index];
 
                                 ui.label(
                                     egui::RichText::new(format!("{:02}", list_index + 1))
                                         .font(egui::FontId::proportional(18.0)),
                                 );
 
-                                if let Some(cover_art) = covers.get(&song.album) {
-                                    let album_art = ctx.load_texture(
-                                        "Album Art",
-                                        egui::ImageData::from(cover_art.clone()),
-                                        egui::TextureOptions::default(),
-                                    );
+                                let response = if let Some(cover_art) = self.covers.get(&song.album)
+                                {
+                                    ui.add(egui::Image::new(cover_art))
+                                } else {
+                                    ui.allocate_response(egui::vec2(48., 48.), egui::Sense::hover())
+                                };
 
-                                    ui.add(egui::Image::new(&album_art));
+                                let is_visible = response.rect.intersects(ui.clip_rect());
+
+                                if is_visible
+                                    && !self.covers.contains_key(&song.album)
+                                    && !self.loading_covers.contains(&song.album)
+                                {
+                                    self.loading_covers.insert(song.album.clone());
+                                    load_cover_art(ctx, &mut self.covers, &song);
+                                    self.loading_covers.remove(&song.album);
                                 }
 
                                 let song_title = egui::Button::new(
@@ -344,19 +383,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 let song_title = ui.add(song_title);
 
                                 if song_title.clicked() {
-                                    if song_queue.len() > 0 {
-                                        song_queue.clear();
-                                    }
+                                    self.player.set_index(list_index);
+                                    self.config.set_track(list_index);
 
-                                    player.set_index(list_index);
-                                    config.set_track(list_index);
-
-                                    if !player.idle() {
-                                        if player.sink.is_paused() {
-                                            player.sink.play();
+                                    if !self.player.idle() {
+                                        if self.player.sink.is_paused() {
+                                            self.player.sink.play();
                                         }
 
-                                        player.sink.skip_one();
+                                        self.player.sink.skip_one();
                                     }
                                 }
 
@@ -393,10 +428,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let close_request = ctx.input(|input| input.viewport().close_requested());
 
         if close_request {
-            let new_config = serde_json::to_string_pretty(&config).expect("Can't export config!");
+            let new_config =
+                serde_json::to_string_pretty(&self.config).expect("Can't export config!");
             std::fs::write("config.json", new_config).expect("Can't update config!");
         }
-    }); // run_simple_native
-
-    Ok(())
+    }
 }

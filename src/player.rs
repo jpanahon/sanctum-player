@@ -4,6 +4,7 @@ pub struct Song {
     pub title: String,
     pub artist: String,
     pub album: String,
+    pub cover: lofty::picture::Picture,
     pub path: String,
     pub duration: u64,
 }
@@ -15,16 +16,35 @@ pub struct Playlist {
 }
 
 pub struct Player {
+    pub _stream_handle: rodio::OutputStream,
     pub sink: rodio::Sink,
     pub current_index: usize,
     pub prev_index: usize,
     pub shuffle: bool,
     pub repeat: bool,
     pub track_pos: u64,
-    pub volume: u32,
     pub skip: bool,
 }
 
+impl Default for Player {
+    fn default() -> Self {
+        let stream_handle =
+            rodio::OutputStreamBuilder::open_default_stream().expect("Can't find speaker!");
+
+        let sink = rodio::Sink::connect_new(&stream_handle.mixer());
+
+        Self {
+            _stream_handle: stream_handle,
+            sink: sink,
+            current_index: 0,
+            prev_index: 0,
+            shuffle: false,
+            repeat: false,
+            track_pos: 0,
+            skip: false,
+        }
+    }
+}
 impl Player {
     pub fn set_index(&mut self, index: usize) {
         self.current_index = index;
@@ -36,6 +56,7 @@ impl Player {
 
     pub fn process(&mut self, songs: &Vec<Song>) {
         self.track_pos = self.sink.get_pos().as_secs();
+
         let max_duration = songs[self.current_index].duration;
 
         if self.sink.empty() && self.track_pos == max_duration {
@@ -101,9 +122,8 @@ impl Player {
     }
 
     pub fn volume(&mut self, new_volume: u32) {
-        if new_volume != self.volume {
-            self.volume = new_volume;
-            self.sink.set_volume(self.volume as f32 / 100.);
+        if new_volume as f32 != self.sink.volume() {
+            self.sink.set_volume(new_volume as f32 / 100.);
         }
     }
 
