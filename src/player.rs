@@ -1,3 +1,4 @@
+use crate::Config;
 use rand::Rng;
 
 pub struct Song {
@@ -46,6 +47,49 @@ impl Default for Player {
     }
 }
 impl Player {
+    pub fn handle_keybinds(
+        &mut self,
+        ui: &eframe::egui::Ui,
+        volume: &mut u32,
+        config: &mut Config,
+        songs: &Vec<Song>,
+    ) {
+        let prev_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowLeft);
+        let skip_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowRight);
+
+        let vol_up = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowUp);
+        let vol_down = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowDown);
+
+        let shufl_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::S);
+
+        if ui.input(|i| i.key_pressed(egui::Key::Space)) {
+            self.playback();
+        }
+
+        if ui.input_mut(|i| i.consume_shortcut(&prev_key)) {
+            self.previous(&songs);
+        }
+
+        if ui.input_mut(|i| i.consume_shortcut(&skip_key)) {
+            self.skip(&songs);
+        }
+
+        if ui.input_mut(|i| i.consume_shortcut(&vol_up)) {
+            *volume += 1;
+            self.volume(*volume);
+            config.set_volume(*volume);
+        }
+
+        if ui.input_mut(|i| i.consume_shortcut(&vol_down)) {
+            *volume -= 1;
+            self.volume(*volume);
+            config.set_volume(*volume);
+        }
+
+        if ui.input_mut(|i| i.consume_shortcut(&shufl_key)) {
+            self.shuffle();
+        }
+    }
     pub fn set_index(&mut self, index: usize) {
         self.current_index = index;
     }
