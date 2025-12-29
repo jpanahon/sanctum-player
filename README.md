@@ -1,6 +1,8 @@
 # Sanctum Player
 A local music player that supports .mp3, .flac, and .m4a written in Rust
 
+# WARNING ⚠️: Still in early development
+
 ![showcase](assets/showcase.png "Demo")
 
 # Features
@@ -13,7 +15,7 @@ A local music player that supports .mp3, .flac, and .m4a written in Rust
 - Add onboarding page
 - Import songs while application is open
 - Make proper queue system
-- Filter songs btased on tags
+- Filter songs based on tags
 
 # Libraries
 - [egui](https://github.com/emilk/egui) (User Interface)
