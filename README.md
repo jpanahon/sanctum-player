@@ -1,5 +1,5 @@
 # Sanctum Player
-A local music player that supports .mp3, .flac, and .m4a written in Rust using [egui](https://github.com/emilk/egui), [rodio](https://github.com/RustAudio/rodio), and [lofty](https://github.com/Serial-ATA/lofty-rs)
+A local music player that supports .mp3, .flac, and .m4a written in Rust
 
 ![showcase](assets/showcase.png "Demo")
 
@@ -13,4 +13,12 @@ A local music player that supports .mp3, .flac, and .m4a written in Rust using [
 - Add onboarding page
 - Import songs while application is open
 - Make proper queue system
-- Filter songs based on tags
+- Filter songs btased on tags
+
+# Libraries
+- [egui](https://github.com/emilk/egui) (User Interface)
+- [egui_extras] (egui Image Support)
+- [rodio](https://github.com/RustAudio/rodio) (Audio Playback)
+- [lofty](https://github.com/Serial-ATA/lofty-rs) (Audio Metadata)
+- [image](https://github.com/image-rs/image) (Image Loading)
+- [fuzzy_matcher](https://github.com/skim-rs/fuzzy-matcher) (Fuzzy Searching)
