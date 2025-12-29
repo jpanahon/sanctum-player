@@ -3,9 +3,9 @@ use eframe::egui;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 
+use fuzzy_matcher::skim::SkimMatcherV2;
 use std::collections::HashMap;
 use std::collections::HashSet;
-
 mod config;
 use config::Config;
 
@@ -60,6 +60,12 @@ fn load_songs(main_dir: String) -> Vec<Song> {
             cover: (tag.pictures())[0].clone(),
             path: song_path,
             duration: seconds,
+            search_key: format!(
+                "{} {} {}",
+                tag.title().as_deref().unwrap_or("Unknown").to_lowercase(),
+                tag.artist().as_deref().unwrap_or("Unknown").to_lowercase(),
+                tag.album().as_deref().unwrap_or("Unknown").to_lowercase(),
+            ),
         };
 
         songs.push(song);
@@ -101,6 +107,13 @@ fn format_timestamp(timestamp: u64) -> String {
     format!("{:02}:{:02}", minutes, seconds)
 }
 
+pub struct Search {
+    modal: bool,
+    matcher: SkimMatcherV2,
+    results: Vec<(usize, i64)>,
+    query: String,
+}
+
 pub struct Sanctum {
     player: Player,
     volume: u32,
@@ -109,6 +122,7 @@ pub struct Sanctum {
     songs: Vec<Song>,
     covers: HashMap<String, egui::TextureHandle>,
     loading_covers: HashSet<String>,
+    search: Search,
 }
 
 impl Sanctum {
@@ -122,9 +136,10 @@ impl Sanctum {
 
         let mut player: Player = Player {
             current_index: config.get_last_track(),
-            prev_index: config.get_last_track(),
             ..Default::default()
         };
+
+        player.sink.pause();
 
         let volume = config.get_volume();
         player.volume(volume);
@@ -135,6 +150,14 @@ impl Sanctum {
         let mut songs = load_songs(current_playlist.path.clone());
         songs.sort_unstable_by_key(|item| item.artist.clone());
 
+        let matcher = SkimMatcherV2::default().ignore_case();
+        let search = Search {
+            modal: false,
+            query: String::new(),
+            matcher: matcher,
+            results: Vec::new(),
+        };
+
         Self {
             config: config,
             player: player,
@@ -143,6 +166,7 @@ impl Sanctum {
             songs: songs,
             covers: covers,
             loading_covers: loading_covers,
+            search: search,
         }
     }
 }
@@ -150,6 +174,12 @@ impl Sanctum {
 impl eframe::App for Sanctum {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
+
+        ctx.input(|i| {
+            self.player
+                .handle_keybinds(i, &mut self.volume, &mut self.config, &self.songs);
+        });
+
         let play_state;
         let play_symbols = ["▶", "⏸"];
 
@@ -172,14 +202,19 @@ impl eframe::App for Sanctum {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui::searchbar::search_bar(ui, self);
+            });
+
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui::playlist::playlist(ctx, ui, self);
             });
         });
 
-        let close_request = ctx.input(|input| input.viewport().close_requested());
+        let close = ctx.input(|i| i.viewport().close_requested());
 
-        if close_request {
+        if close {
+            self.config.set_track(self.player.current_index);
             let new_config =
                 serde_json::to_string_pretty(&self.config).expect("Can't export config!");
             std::fs::write("config.json", new_config).expect("Can't update config!");

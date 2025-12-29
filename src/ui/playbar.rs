@@ -1,25 +1,28 @@
 use crate::Sanctum;
-use crate::load_cover_art;
 use crate::format_timestamp;
+use crate::load_cover_art;
 
-pub fn playbar(ctx: &eframe::egui::Context, ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
-    sanc.player.handle_keybinds(ui, &mut sanc.volume, &mut sanc.config, &sanc.songs);
-    let play_button = egui::Button::new(
-        egui::RichText::new(play_state).font(egui::FontId::proportional(18.0)),
-    )
-    .min_size(egui::Vec2::new(40.0, 40.0))
-    .corner_radius(100)
-    .frame(true);
+pub fn playbar(
+    ctx: &eframe::egui::Context,
+    ui: &mut egui::Ui,
+    play_state: &str,
+    sanc: &mut Sanctum,
+) {
+    let play_button =
+        egui::Button::new(egui::RichText::new(play_state).font(egui::FontId::proportional(18.0)))
+            .min_size(egui::Vec2::new(40.0, 40.0))
+            .corner_radius(100)
+            .frame(true);
 
     let prev_button =
-    egui::Button::new(egui::RichText::new("⏪").font(egui::FontId::proportional(18.0)))
-    .min_size(egui::Vec2::new(40.0, 40.0))
-    .frame(false);
+        egui::Button::new(egui::RichText::new("⏪").font(egui::FontId::proportional(18.0)))
+            .min_size(egui::Vec2::new(40.0, 40.0))
+            .frame(false);
 
     let skip_button =
-    egui::Button::new(egui::RichText::new("⏩").font(egui::FontId::proportional(18.0)))
-    .min_size(egui::Vec2::new(40.0, 40.0))
-    .frame(false);
+        egui::Button::new(egui::RichText::new("⏩").font(egui::FontId::proportional(18.0)))
+            .min_size(egui::Vec2::new(40.0, 40.0))
+            .frame(false);
 
     let shufl_color = if sanc.player.is_shuffled() {
         egui::Color32::from_rgb(1, 92, 128)
@@ -29,16 +32,16 @@ pub fn playbar(ctx: &eframe::egui::Context, ui: &mut egui::Ui, play_state: &str,
 
     let shufl_button = egui::Button::new(
         egui::RichText::new("🔀")
-        .font(egui::FontId::proportional(18.0))
-        .color(shufl_color),
+            .font(egui::FontId::proportional(18.0))
+            .color(shufl_color),
     )
     .min_size(egui::Vec2::new(40.0, 40.0))
     .frame(false);
 
     let repeat_button =
-    egui::Button::new(egui::RichText::new("🔁").font(egui::FontId::proportional(18.0)))
-    .min_size(egui::Vec2::new(40.0, 40.0))
-    .frame(false);
+        egui::Button::new(egui::RichText::new("🔁").font(egui::FontId::proportional(18.0)))
+            .min_size(egui::Vec2::new(40.0, 40.0))
+            .frame(false);
 
     ui.columns(3, |columns| {
         columns[0].horizontal_centered(|ui| {
@@ -53,13 +56,13 @@ pub fn playbar(ctx: &eframe::egui::Context, ui: &mut egui::Ui, play_state: &str,
 
                 if !sanc.covers.contains_key(&current_track.album)
                     && !sanc.loading_covers.contains(&current_track.album)
-                    {
-                        sanc.loading_covers.insert(current_track.album.clone());
-                        load_cover_art(ctx, &mut sanc.covers, current_track);
-                        sanc.loading_covers.remove(&current_track.album);
-                    }
+                {
+                    sanc.loading_covers.insert(current_track.album.clone());
+                    load_cover_art(ctx, &mut sanc.covers, current_track);
+                    sanc.loading_covers.remove(&current_track.album);
+                }
 
-                    ui.heading(format!("{}\n{}", current_track.title, current_track.artist));
+                ui.heading(format!("{}\n{}", current_track.title, current_track.artist));
             } else {
                 ui.heading("No song playing!");
             }
@@ -94,18 +97,22 @@ pub fn playbar(ctx: &eframe::egui::Context, ui: &mut egui::Ui, play_state: &str,
                 ui.style_mut().visuals.slider_trailing_fill = true;
 
                 let total_duration = sanc.songs[sanc.player.current_index].duration;
-                let time_slider =
-                egui::Slider::new(&mut sanc.player.track_pos, 0..=total_duration)
-                .logarithmic(false)
-                .show_value(false)
-                .clamping(egui::SliderClamping::Always)
-                .trailing_fill(true);
+                let time_slider = egui::Slider::new(&mut sanc.player.track_pos, 0..=total_duration)
+                    .logarithmic(false)
+                    .show_value(false)
+                    .clamping(egui::SliderClamping::Always)
+                    .trailing_fill(true);
 
-                ui.add(time_slider);
+                let seek_bar = ui.add(time_slider);
+
+                if seek_bar.drag_stopped() {
+                    sanc.player.seek();
+                }
+
                 ui.label(format!(
                     "{} / {}",
                     format_timestamp(sanc.player.track_pos),
-                        format_timestamp(total_duration)
+                    format_timestamp(total_duration)
                 ));
             });
         });

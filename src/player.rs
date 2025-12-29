@@ -1,5 +1,6 @@
 use crate::Config;
 use rand::Rng;
+use std::time::Duration;
 
 pub struct Song {
     pub title: String,
@@ -8,6 +9,8 @@ pub struct Song {
     pub cover: lofty::picture::Picture,
     pub path: String,
     pub duration: u64,
+
+    pub search_key: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
@@ -49,49 +52,77 @@ impl Default for Player {
 impl Player {
     pub fn handle_keybinds(
         &mut self,
-        ui: &eframe::egui::Ui,
+        i: &eframe::egui::InputState,
         volume: &mut u32,
         config: &mut Config,
         songs: &Vec<Song>,
     ) {
-        let prev_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowLeft);
-        let skip_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowRight);
+        for event in &i.events {
+            if let egui::Event::Key {
+                key: egui::Key::Space,
+                pressed: true,
+                repeat: false,
+                ..
+            } = event
+            {
+                self.playback();
+            }
 
-        let vol_up = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowUp);
-        let vol_down = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::ArrowDown);
+            if i.modifiers.ctrl {
+                if let egui::Event::Key {
+                    key: egui::Key::ArrowLeft,
+                    pressed: true,
+                    repeat: false,
+                    ..
+                } = event
+                {
+                    self.previous(&songs);
+                }
 
-        let shufl_key = egui::KeyboardShortcut::new(egui::Modifiers::CTRL, egui::Key::S);
+                if let egui::Event::Key {
+                    key: egui::Key::ArrowRight,
+                    pressed: true,
+                    repeat: false,
+                    ..
+                } = event
+                {
+                    self.skip(&songs);
+                }
 
-        if ui.input(|i| i.key_pressed(egui::Key::Space)) {
-            self.playback();
-        }
+                if i.key_pressed(egui::Key::ArrowUp) {
+                    *volume += 1;
+                    self.volume(*volume);
+                    config.set_volume(*volume);
+                }
 
-        if ui.input_mut(|i| i.consume_shortcut(&prev_key)) {
-            self.previous(&songs);
-        }
+                if i.key_pressed(egui::Key::ArrowDown) {
+                    *volume -= 1;
+                    self.volume(*volume);
+                    config.set_volume(*volume);
+                }
 
-        if ui.input_mut(|i| i.consume_shortcut(&skip_key)) {
-            self.skip(&songs);
-        }
-
-        if ui.input_mut(|i| i.consume_shortcut(&vol_up)) {
-            *volume += 1;
-            self.volume(*volume);
-            config.set_volume(*volume);
-        }
-
-        if ui.input_mut(|i| i.consume_shortcut(&vol_down)) {
-            *volume -= 1;
-            self.volume(*volume);
-            config.set_volume(*volume);
-        }
-
-        if ui.input_mut(|i| i.consume_shortcut(&shufl_key)) {
-            self.shuffle();
+                if let egui::Event::Key {
+                    key: egui::Key::S,
+                    pressed: true,
+                    repeat: false,
+                    ..
+                } = event
+                {
+                    self.shuffle();
+                }
+            }
         }
     }
     pub fn set_index(&mut self, index: usize) {
         self.current_index = index;
+
+        if self.sink.is_paused() {
+            self.sink.play();
+        }
+
+        if !self.idle() {
+            self.sink.skip_one();
+        }
     }
 
     pub fn idle(&self) -> bool {
@@ -182,5 +213,10 @@ impl Player {
 
     pub fn is_shuffled(&self) -> bool {
         self.shuffle
+    }
+
+    pub fn seek(&mut self) {
+        let new_pos = Duration::from_secs(self.track_pos);
+        self.sink.try_seek(new_pos).expect("Can't seek!");
     }
 }
