@@ -3,10 +3,10 @@ use eframe::egui;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 
-use fuzzy_matcher::skim::SkimMatcherV2;
 use std::collections::HashMap;
 use std::collections::HashSet;
-mod config;
+
+pub mod config;
 use config::Config;
 
 pub mod ui;
@@ -15,6 +15,9 @@ pub mod player;
 use player::Player;
 use player::Playlist;
 use player::Song;
+
+pub mod search;
+use search::Search;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -75,29 +78,45 @@ fn load_songs(main_dir: String) -> Vec<Song> {
 }
 
 fn load_cover_art(
-    ctx: &eframe::egui::Context,
+    ui: &mut egui::Ui,
     covers: &mut HashMap<String, egui::TextureHandle>,
+    loading_covers: &mut HashSet<String>,
     song: &Song,
 ) {
-    covers.entry(song.album.clone()).or_insert_with(|| {
-        let image = song.cover.data();
-        let image_data = image::load_from_memory(image)
-            .expect(format!("Can't load album art: {}", song.path).as_str());
+    let response = if let Some(cover_art) = covers.get(&song.album) {
+        ui.add(egui::Image::new(cover_art))
+    } else {
+        ui.allocate_response(egui::vec2(48., 48.), egui::Sense::hover())
+    };
 
-        let cover_data = image_data.resize_exact(48, 48, image::imageops::Nearest);
+    let is_visible = response.rect.intersects(ui.clip_rect());
 
-        let image_size = [cover_data.width() as _, cover_data.height() as _];
-        let image_buffer = cover_data.to_rgba8();
-        let pixels = image_buffer.as_flat_samples();
+    if is_visible && !covers.contains_key(&song.album) && !loading_covers.contains(&song.album) {
+        loading_covers.insert(song.album.clone());
 
-        let color_image = egui::ColorImage::from_rgba_unmultiplied(image_size, pixels.as_slice());
+        covers.entry(song.album.clone()).or_insert_with(|| {
+            let image = song.cover.data();
+            let image_data = image::load_from_memory(image)
+                .expect(format!("Can't load album art: {}", song.path).as_str());
 
-        ctx.load_texture(
-            song.album.clone(),
-            egui::ImageData::from(color_image),
-            egui::TextureOptions::default(),
-        )
-    });
+            let cover_data = image_data.resize_exact(48, 48, image::imageops::Nearest);
+
+            let image_size = [cover_data.width() as _, cover_data.height() as _];
+            let image_buffer = cover_data.to_rgba8();
+            let pixels = image_buffer.as_flat_samples();
+
+            let color_image =
+                egui::ColorImage::from_rgba_unmultiplied(image_size, pixels.as_slice());
+
+            ui.ctx().load_texture(
+                song.album.clone(),
+                egui::ImageData::from(color_image),
+                egui::TextureOptions::default(),
+            )
+        });
+
+        loading_covers.remove(&song.album);
+    }
 }
 
 fn format_timestamp(timestamp: u64) -> String {
@@ -105,13 +124,6 @@ fn format_timestamp(timestamp: u64) -> String {
     let seconds = timestamp % 60;
 
     format!("{:02}:{:02}", minutes, seconds)
-}
-
-pub struct Search {
-    modal: bool,
-    matcher: SkimMatcherV2,
-    results: Vec<(usize, i64)>,
-    query: String,
 }
 
 pub struct Sanctum {
@@ -148,15 +160,7 @@ impl Sanctum {
         let loading_covers: HashSet<String> = HashSet::new();
 
         let mut songs = load_songs(current_playlist.path.clone());
-        songs.sort_unstable_by_key(|item| item.artist.clone());
-
-        let matcher = SkimMatcherV2::default().ignore_case();
-        let search = Search {
-            modal: false,
-            query: String::new(),
-            matcher: matcher,
-            results: Vec::new(),
-        };
+        songs.sort_unstable_by_key(|item| item.artist.to_lowercase().clone());
 
         Self {
             config: config,
@@ -166,7 +170,7 @@ impl Sanctum {
             songs: songs,
             covers: covers,
             loading_covers: loading_covers,
-            search: search,
+            search: Search::default(),
         }
     }
 }
@@ -194,12 +198,7 @@ impl eframe::App for Sanctum {
                             ..
                         } = event
                         {
-                            if !self.search.results.is_empty() {
-                                self.search.query.clear();
-                                self.search.results.clear();
-                            }
-
-                            self.search.modal = !self.search.modal;
+                            self.search.open_modal();
                         }
                     }
                 }
@@ -218,8 +217,8 @@ impl eframe::App for Sanctum {
         self.player.process(&self.songs);
 
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
-            ui::playbar::playbar(ctx, ui, &play_state, self);
-        }); // egui::TopBottomPanel
+            ui::playbar::playbar(ui, &play_state, self);
+        });
 
         egui::SidePanel::left("sidebar").show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -233,7 +232,7 @@ impl eframe::App for Sanctum {
             });
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui::playlist::playlist(ctx, ui, self);
+                ui::playlist::playlist(ui, self);
             });
         });
 

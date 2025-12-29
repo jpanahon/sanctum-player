@@ -2,12 +2,7 @@ use crate::Sanctum;
 use crate::format_timestamp;
 use crate::load_cover_art;
 
-pub fn playbar(
-    ctx: &eframe::egui::Context,
-    ui: &mut egui::Ui,
-    play_state: &str,
-    sanc: &mut Sanctum,
-) {
+pub fn playbar(ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
     let play_button =
         egui::Button::new(egui::RichText::new(play_state).font(egui::FontId::proportional(18.0)))
             .min_size(egui::Vec2::new(40.0, 40.0))
@@ -48,19 +43,12 @@ pub fn playbar(
             if !sanc.player.done() {
                 let current_track = &sanc.songs[sanc.player.current_index];
 
-                if let Some(cover_art) = sanc.covers.get(&current_track.album) {
-                    ui.add(egui::Image::new(cover_art));
-                } else {
-                    ui.allocate_response(egui::vec2(48., 48.), egui::Sense::hover());
-                }
-
-                if !sanc.covers.contains_key(&current_track.album)
-                    && !sanc.loading_covers.contains(&current_track.album)
-                {
-                    sanc.loading_covers.insert(current_track.album.clone());
-                    load_cover_art(ctx, &mut sanc.covers, current_track);
-                    sanc.loading_covers.remove(&current_track.album);
-                }
+                load_cover_art(
+                    ui,
+                    &mut sanc.covers,
+                    &mut sanc.loading_covers,
+                    current_track,
+                );
 
                 ui.heading(format!("{}\n{}", current_track.title, current_track.artist));
             } else {

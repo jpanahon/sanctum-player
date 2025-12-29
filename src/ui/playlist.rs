@@ -2,7 +2,7 @@ use crate::Sanctum;
 use crate::format_timestamp;
 use crate::load_cover_art;
 
-pub fn playlist(ctx: &eframe::egui::Context, ui: &mut egui::Ui, sanc: &mut Sanctum) {
+pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
     ui.centered_and_justified(|ui| {
         egui::Grid::new("song_list")
             .striped(true)
@@ -16,22 +16,7 @@ pub fn playlist(ctx: &eframe::egui::Context, ui: &mut egui::Ui, sanc: &mut Sanct
                             .font(egui::FontId::proportional(18.0)),
                     );
 
-                    let response = if let Some(cover_art) = sanc.covers.get(&song.album) {
-                        ui.add(egui::Image::new(cover_art))
-                    } else {
-                        ui.allocate_response(egui::vec2(48., 48.), egui::Sense::hover())
-                    };
-
-                    let is_visible = response.rect.intersects(ui.clip_rect());
-
-                    if is_visible
-                        && !sanc.covers.contains_key(&song.album)
-                        && !sanc.loading_covers.contains(&song.album)
-                    {
-                        sanc.loading_covers.insert(song.album.clone());
-                        load_cover_art(ctx, &mut sanc.covers, &song);
-                        sanc.loading_covers.remove(&song.album);
-                    }
+                    load_cover_art(ui, &mut sanc.covers, &mut sanc.loading_covers, song);
 
                     let song_title = egui::Button::new(
                         egui::RichText::new(format!("{}", song.title))
