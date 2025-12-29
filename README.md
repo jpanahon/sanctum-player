@@ -17,7 +17,7 @@ A local music player that supports .mp3, .flac, and .m4a written in Rust
 
 # Libraries
 - [egui](https://github.com/emilk/egui) (User Interface)
-- [egui_extras] (egui Image Support)
+- [egui_extras](https://github.com/emilk/egui/blob/main/crates/egui_extras/README.md) (egui Image Support)
 - [rodio](https://github.com/RustAudio/rodio) (Audio Playback)
 - [lofty](https://github.com/Serial-ATA/lofty-rs) (Audio Metadata)
 - [image](https://github.com/image-rs/image) (Image Loading)
