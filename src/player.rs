@@ -53,63 +53,61 @@ impl Player {
     pub fn handle_keybinds(
         &mut self,
         i: &eframe::egui::InputState,
+        event: &egui::Event,
         volume: &mut u32,
         config: &mut Config,
         songs: &Vec<Song>,
     ) {
-        for event in &i.events {
+        if let egui::Event::Key {
+            key: egui::Key::Space,
+            pressed: true,
+            repeat: false,
+            ..
+        } = event
+        {
+            self.playback();
+        }
+
+        if i.modifiers.ctrl {
             if let egui::Event::Key {
-                key: egui::Key::Space,
+                key: egui::Key::ArrowLeft,
                 pressed: true,
                 repeat: false,
                 ..
             } = event
             {
-                self.playback();
+                self.previous(&songs);
             }
 
-            if i.modifiers.ctrl {
-                if let egui::Event::Key {
-                    key: egui::Key::ArrowLeft,
-                    pressed: true,
-                    repeat: false,
-                    ..
-                } = event
-                {
-                    self.previous(&songs);
-                }
+            if let egui::Event::Key {
+                key: egui::Key::ArrowRight,
+                pressed: true,
+                repeat: false,
+                ..
+            } = event
+            {
+                self.skip(&songs);
+            }
 
-                if let egui::Event::Key {
-                    key: egui::Key::ArrowRight,
-                    pressed: true,
-                    repeat: false,
-                    ..
-                } = event
-                {
-                    self.skip(&songs);
-                }
+            if i.key_pressed(egui::Key::ArrowUp) {
+                *volume += 1;
+                self.volume(*volume);
+            }
 
-                if i.key_pressed(egui::Key::ArrowUp) {
-                    *volume += 1;
-                    self.volume(*volume);
-                    config.set_volume(*volume);
-                }
+            if i.key_pressed(egui::Key::ArrowDown) {
+                *volume -= 1;
+                self.volume(*volume);
+                config.set_volume(*volume);
+            }
 
-                if i.key_pressed(egui::Key::ArrowDown) {
-                    *volume -= 1;
-                    self.volume(*volume);
-                    config.set_volume(*volume);
-                }
-
-                if let egui::Event::Key {
-                    key: egui::Key::S,
-                    pressed: true,
-                    repeat: false,
-                    ..
-                } = event
-                {
-                    self.shuffle();
-                }
+            if let egui::Event::Key {
+                key: egui::Key::S,
+                pressed: true,
+                repeat: false,
+                ..
+            } = event
+            {
+                self.shuffle();
             }
         }
     }

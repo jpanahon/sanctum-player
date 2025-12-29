@@ -175,10 +175,36 @@ impl eframe::App for Sanctum {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
 
-        ctx.input(|i| {
-            self.player
-                .handle_keybinds(i, &mut self.volume, &mut self.config, &self.songs);
-        });
+        if !self.search.modal {
+            ctx.input(|i| {
+                for event in &i.events {
+                    self.player.handle_keybinds(
+                        i,
+                        event,
+                        &mut self.volume,
+                        &mut self.config,
+                        &self.songs,
+                    );
+
+                    if i.modifiers.ctrl {
+                        if let egui::Event::Key {
+                            key: egui::Key::F,
+                            pressed: true,
+                            repeat: false,
+                            ..
+                        } = event
+                        {
+                            if !self.search.results.is_empty() {
+                                self.search.query.clear();
+                                self.search.results.clear();
+                            }
+
+                            self.search.modal = !self.search.modal;
+                        }
+                    }
+                }
+            });
+        }
 
         let play_state;
         let play_symbols = ["▶", "⏸"];

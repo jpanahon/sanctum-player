@@ -36,6 +36,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             .frame(false);
     if ui.add(search_button).clicked() {
         if !sanc.search.results.is_empty() {
+            sanc.search.query.clear();
             sanc.search.results.clear();
         }
 
@@ -44,9 +45,10 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
 
     if sanc.search.modal {
         let modal = egui::Modal::new(egui::Id::new("Search Bar")).show(ui.ctx(), |ui| {
-            let search = ui.add(
+            let search = ui.add_sized(
+                [600., 48.],
                 egui::TextEdit::singleline(&mut sanc.search.query)
-                    .font(egui::FontId::proportional(36.)),
+                    .font(egui::FontId::proportional(48.)),
             );
 
             if search.changed() {
@@ -54,7 +56,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             }
 
             egui::ScrollArea::vertical()
-                .min_scrolled_height(240.)
+                .min_scrolled_height(365.)
                 .show(ui, |ui| {
                     if !sanc.search.results.is_empty() {
                         for (index, _) in sanc.search.results.iter().take(50) {
@@ -94,6 +96,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                                     sanc.search.modal = false;
                                 }
                             });
+                            ui.separator();
                         }
                     }
                 });
