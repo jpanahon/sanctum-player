@@ -5,6 +5,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
     let search_button =
         egui::Button::new(egui::RichText::new("🔎").font(egui::FontId::proportional(18.)))
             .frame(false);
+
     if ui.add(search_button).clicked() {
         sanc.search.open_modal();
     }

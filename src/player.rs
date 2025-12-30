@@ -1,4 +1,5 @@
 use crate::Config;
+use crate::MprisState;
 use rand::Rng;
 use std::time::Duration;
 
@@ -132,13 +133,20 @@ impl Player {
 
         let max_duration = songs[self.current_index].duration;
 
-        if self.sink.empty() && self.track_pos == max_duration {
+        if self.sink.empty() && self.track_pos == max_duration && !self.repeat {
             if (self.current_index + 1) > songs.len() - 1 {
                 self.current_index = 0;
             } else {
                 self.current_index += 1;
             }
         }
+
+        if self.repeat {
+            if self.sink.empty() {
+                self.play(songs);
+            }
+        }
+
         if self.current_index != self.prev_index {
             if self.shuffle {
                 let mut rng = rand::rng();
@@ -204,9 +212,16 @@ impl Player {
         self.sink.empty()
     }
 
-    pub fn shuffle(&mut self) -> bool {
+    pub fn shuffle(&mut self) {
         self.shuffle = !self.shuffle;
-        self.shuffle
+    }
+
+    pub fn set_shuffle(&mut self, toggle: bool) {
+        self.shuffle = toggle;
+    }
+
+    pub fn repeat(&mut self) {
+        self.repeat = !self.repeat;
     }
 
     pub fn is_shuffled(&self) -> bool {
@@ -216,5 +231,25 @@ impl Player {
     pub fn seek(&mut self) {
         let new_pos = Duration::from_secs(self.track_pos);
         self.sink.try_seek(new_pos).expect("Can't seek!");
+    }
+
+    pub fn seek_to(&mut self, seconds: i64) {
+        let new_pos = Duration::from_secs(seconds as u64);
+        self.sink.try_seek(new_pos).expect("Can't seek!");
+    }
+
+    pub fn handle_mpris(&mut self, state: MprisState, songs: &Vec<Song>) {
+        match state {
+            MprisState::Play => self.sink.play(),
+            MprisState::Pause => self.playback(),
+            MprisState::PlayPause => self.playback(),
+            MprisState::Volume(vol) => self.volume(vol as u32),
+            MprisState::Next => self.skip(songs),
+            MprisState::Previous => self.previous(songs),
+            MprisState::Shuffle(toggle_shuffle) => self.set_shuffle(toggle_shuffle),
+            MprisState::Loop => self.repeat(),
+            MprisState::Metadata => (),
+            MprisState::Seek(pos) => self.seek_to(pos),
+        }
     }
 }

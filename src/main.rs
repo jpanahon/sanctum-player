@@ -5,9 +5,16 @@ use lofty::probe::Probe;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::mpsc;
 
 pub mod config;
 use config::Config;
+
+pub mod mpris;
+use mpris::MprisHandler;
+use mpris::MprisState;
+
+use mpris_server::Server;
 
 pub mod ui;
 
@@ -135,6 +142,8 @@ pub struct Sanctum {
     covers: HashMap<String, egui::TextureHandle>,
     loading_covers: HashSet<String>,
     search: Search,
+    mpris: Server<MprisHandler>,
+    receiver: mpsc::Receiver<MprisState>,
 }
 
 impl Sanctum {
@@ -162,6 +171,13 @@ impl Sanctum {
         let mut songs = load_songs(current_playlist.path.clone());
         songs.sort_unstable_by_key(|item| item.artist.to_lowercase().clone());
 
+        let (tx, rx) = mpsc::channel::<MprisState>();
+
+        let mpris_handler = MprisHandler { tx: tx };
+
+        let mpris = futures::executor::block_on(Server::new("Sanctum.Player", mpris_handler))
+            .expect("Can't make server!");
+
         Self {
             config: config,
             player: player,
@@ -171,6 +187,8 @@ impl Sanctum {
             covers: covers,
             loading_covers: loading_covers,
             search: Search::default(),
+            mpris: mpris,
+            receiver: rx,
         }
     }
 }
@@ -178,6 +196,10 @@ impl Sanctum {
 impl eframe::App for Sanctum {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
+
+        while let Ok(state) = self.receiver.try_recv() {
+            self.player.handle_mpris(state, &self.songs);
+        }
 
         if !self.search.modal {
             ctx.input(|i| {

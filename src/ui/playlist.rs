@@ -1,6 +1,7 @@
 use crate::Sanctum;
 use crate::format_timestamp;
 use crate::load_cover_art;
+use mpris_server::Metadata;
 
 pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
     ui.centered_and_justified(|ui| {
@@ -28,6 +29,13 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
 
                     if song_title.clicked() {
                         sanc.player.set_index(list_index);
+
+                        // let metadata = Metadata::builder()
+                        //     .title(song.title.clone())
+                        //     .artist(vec![song.artist.clone()])
+                        //     .album(song.album.clone());
+                        //
+                        // sanc.mpris.player().set_metadata(metadata);
                     }
 
                     song_title.context_menu(|ui| {

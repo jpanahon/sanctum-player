@@ -60,7 +60,7 @@ pub fn playbar(ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
             ui.horizontal(|ui| {
                 ui.add_space(ui.max_rect().width() / 3.);
                 if ui.add(repeat_button).clicked() {
-                    println!("Repeat");
+                    sanc.player.repeat();
                 }
 
                 if ui.add(prev_button).clicked() {
