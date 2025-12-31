@@ -110,6 +110,16 @@ impl Player {
             {
                 self.shuffle();
             }
+
+            if let egui::Event::Key {
+                key: egui::Key::R,
+                pressed: true,
+                repeat: false,
+                ..
+            } = event
+            {
+                self.repeat();
+            }
         }
     }
     pub fn set_index(&mut self, index: usize) {
@@ -224,6 +234,10 @@ impl Player {
         self.repeat = !self.repeat;
     }
 
+    pub fn is_repeat(&self) -> bool {
+        self.repeat
+    }
+
     pub fn is_shuffled(&self) -> bool {
         self.shuffle
     }
@@ -241,7 +255,7 @@ impl Player {
     pub fn handle_mpris(&mut self, state: MprisState, songs: &Vec<Song>) {
         match state {
             MprisState::Play => self.sink.play(),
-            MprisState::Pause => self.playback(),
+            MprisState::Pause => self.sink.pause(),
             MprisState::PlayPause => self.playback(),
             MprisState::Volume(vol) => self.volume(vol as u32),
             MprisState::Next => self.skip(songs),

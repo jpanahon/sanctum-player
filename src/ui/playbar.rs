@@ -33,10 +33,19 @@ pub fn playbar(ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
     .min_size(egui::Vec2::new(40.0, 40.0))
     .frame(false);
 
-    let repeat_button =
-        egui::Button::new(egui::RichText::new("🔁").font(egui::FontId::proportional(18.0)))
-            .min_size(egui::Vec2::new(40.0, 40.0))
-            .frame(false);
+    let loop_color = if sanc.player.is_repeat() {
+        egui::Color32::from_rgb(1, 92, 128)
+    } else {
+        egui::Color32::from_rgb(180, 180, 180)
+    };
+
+    let repeat_button = egui::Button::new(
+        egui::RichText::new("🔁")
+            .font(egui::FontId::proportional(18.0))
+            .color(loop_color),
+    )
+    .min_size(egui::Vec2::new(40.0, 40.0))
+    .frame(false);
 
     ui.columns(3, |columns| {
         columns[0].horizontal_centered(|ui| {
