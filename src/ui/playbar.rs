@@ -77,7 +77,7 @@ pub fn playbar(ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
                 }
 
                 if ui.add(play_button).clicked() {
-                    sanc.player.playback();
+                    sanc.player.playback(&sanc.mpris);
                 }
 
                 if ui.add(skip_button).clicked() {

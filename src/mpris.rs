@@ -18,6 +18,7 @@ pub enum MprisState {
     Metadata,
     Volume(f64),
     Seek(i64),
+    Stop,
 }
 
 pub struct MprisHandler {
@@ -96,6 +97,7 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn stop(&self) -> fdo::Result<()> {
+        let _ = self.tx.send(MprisState::Stop);
         Ok(())
     }
 
@@ -128,8 +130,7 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
-        println!("PlaybackStatus");
-        Ok(PlaybackStatus::Playing)
+        Ok(PlaybackStatus::Paused)
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {

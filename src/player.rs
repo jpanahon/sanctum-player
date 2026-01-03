@@ -1,5 +1,6 @@
 use crate::Config;
-use crate::MprisState;
+use crate::mpris::{MprisHandler, MprisState};
+use mpris_server::{Metadata, PlaybackStatus, Property, Server, Time, TrackId};
 use rand::Rng;
 use std::time::Duration;
 
@@ -29,6 +30,7 @@ pub struct Player {
     pub repeat: bool,
     pub track_pos: u64,
     pub skip: bool,
+    pub queue: Vec<usize>,
 }
 
 impl Default for Player {
@@ -47,6 +49,7 @@ impl Default for Player {
             repeat: false,
             track_pos: 0,
             skip: false,
+            queue: Vec::new(),
         }
     }
 }
@@ -54,6 +57,7 @@ impl Player {
     pub fn handle_keybinds(
         &mut self,
         i: &eframe::egui::InputState,
+        mpris: &Server<MprisHandler>,
         event: &egui::Event,
         volume: &mut u32,
         config: &mut Config,
@@ -66,7 +70,7 @@ impl Player {
             ..
         } = event
         {
-            self.playback();
+            self.playback(mpris);
         }
 
         if i.modifiers.ctrl {
@@ -138,7 +142,7 @@ impl Player {
         self.sink.empty() || self.sink.is_paused()
     }
 
-    pub fn process(&mut self, songs: &Vec<Song>) {
+    pub fn process(&mut self, songs: &Vec<Song>, mpris: &Server<MprisHandler>) {
         self.track_pos = self.sink.get_pos().as_secs();
 
         let max_duration = songs[self.current_index].duration;
@@ -153,7 +157,7 @@ impl Player {
 
         if self.repeat {
             if self.sink.empty() {
-                self.play(songs);
+                self.play(songs, mpris);
             }
         }
 
@@ -163,7 +167,7 @@ impl Player {
                 self.current_index = rng.random_range(0..=songs.len() - 1);
             }
 
-            self.play(songs);
+            self.play(songs, mpris);
 
             if self.skip {
                 self.sink.skip_one();
@@ -174,25 +178,67 @@ impl Player {
         }
     }
 
-    pub fn playback(&mut self) {
+    pub fn playback(&mut self, mpris: &Server<MprisHandler>) {
         if self.sink.is_paused() {
-            self.sink.play();
+            self.resume(mpris);
         } else {
-            self.sink.pause();
+            self.pause(mpris);
         }
     }
 
-    fn play(&mut self, songs: &Vec<Song>) {
-        let song_path = &songs[self.current_index].path;
+    fn resume(&mut self, mpris: &Server<MprisHandler>) {
+        self.sink.play();
+        futures::executor::block_on(
+            mpris.properties_changed([Property::PlaybackStatus(PlaybackStatus::Playing)]),
+        )
+        .expect("Failed to update PlaybackStatus to Playing!");
+    }
+
+    fn pause(&mut self, mpris: &Server<MprisHandler>) {
+        self.sink.pause();
+        futures::executor::block_on(
+            mpris.properties_changed([Property::PlaybackStatus(PlaybackStatus::Paused)]),
+        )
+        .expect("Failed to update PlaybackStatus to Paused!");
+    }
+
+    fn stop(&mut self, mpris: &Server<MprisHandler>) {
+        self.track_pos = 0;
+        self.sink.stop();
+        futures::executor::block_on(
+            mpris.properties_changed([Property::PlaybackStatus(PlaybackStatus::Stopped)]),
+        )
+        .expect("Failed to update PlaybackStatus to Paused!");
+    }
+
+    pub fn add_queue(&mut self, index: usize) {
+        self.queue.push(index);
+    }
+
+    fn play(&mut self, songs: &Vec<Song>, mpris: &Server<MprisHandler>) {
+        let song = &songs[self.current_index];
+        let song_path = song.path.clone();
         let song_file = std::fs::File::open(song_path).unwrap();
         let decoder = rodio::Decoder::try_from(song_file).expect("Unable to make decoder!");
+
+        let metadata = Metadata::builder()
+            .title(song.title.clone())
+            .artist(vec![song.artist.clone()])
+            .album(song.album.clone())
+            .length(Time::from_secs(song.duration.clone() as i64))
+            .trackid(TrackId::NO_TRACK)
+            .build();
+
+        futures::executor::block_on(mpris.properties_changed([Property::Metadata(metadata)]))
+            .expect("Failed to update metadata!");
 
         self.sink.append(decoder);
     }
 
     pub fn skip(&mut self, songs: &Vec<Song>) {
-        if self.sink.len() > 1 {
-            self.sink.skip_one();
+        if self.queue.len() > 0 {
+            self.current_index = self.queue[0];
+            self.queue.remove(0);
         } else if (self.current_index + 1) == songs.len() {
             self.current_index = 0;
         } else {
@@ -252,11 +298,16 @@ impl Player {
         self.sink.try_seek(new_pos).expect("Can't seek!");
     }
 
-    pub fn handle_mpris(&mut self, state: MprisState, songs: &Vec<Song>) {
+    pub fn handle_mpris(
+        &mut self,
+        state: MprisState,
+        songs: &Vec<Song>,
+        mpris: &Server<MprisHandler>,
+    ) {
         match state {
-            MprisState::Play => self.sink.play(),
-            MprisState::Pause => self.sink.pause(),
-            MprisState::PlayPause => self.playback(),
+            MprisState::Play => self.resume(mpris),
+            MprisState::Pause => self.pause(mpris),
+            MprisState::PlayPause => self.playback(mpris),
             MprisState::Volume(vol) => self.volume(vol as u32),
             MprisState::Next => self.skip(songs),
             MprisState::Previous => self.previous(songs),
@@ -264,6 +315,7 @@ impl Player {
             MprisState::Loop => self.repeat(),
             MprisState::Metadata => (),
             MprisState::Seek(pos) => self.seek_to(pos),
+            MprisState::Stop => self.stop(mpris),
         }
     }
 }

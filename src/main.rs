@@ -198,7 +198,7 @@ impl eframe::App for Sanctum {
         ctx.request_repaint();
 
         while let Ok(state) = self.receiver.try_recv() {
-            self.player.handle_mpris(state, &self.songs);
+            self.player.handle_mpris(state, &self.songs, &self.mpris);
         }
 
         if !self.search.modal {
@@ -206,6 +206,7 @@ impl eframe::App for Sanctum {
                 for event in &i.events {
                     self.player.handle_keybinds(
                         i,
+                        &self.mpris,
                         event,
                         &mut self.volume,
                         &mut self.config,
@@ -236,7 +237,7 @@ impl eframe::App for Sanctum {
             play_state = play_symbols[1];
         }
 
-        self.player.process(&self.songs);
+        self.player.process(&self.songs, &self.mpris);
 
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
             ui::playbar::playbar(ui, &play_state, self);
