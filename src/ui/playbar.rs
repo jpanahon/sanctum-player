@@ -52,12 +52,7 @@ pub fn playbar(ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
             if !sanc.player.done() {
                 let current_track = &sanc.songs[sanc.player.current_index];
 
-                load_cover_art(
-                    ui,
-                    &mut sanc.covers,
-                    &mut sanc.loading_covers,
-                    current_track,
-                );
+                load_cover_art(ui, &mut sanc.cache, current_track);
 
                 ui.heading(format!("{}\n{}", current_track.title, current_track.artist));
             } else {

@@ -6,6 +6,7 @@ pub struct Config {
     playlists: Vec<Playlist>,
     last_track_index: usize,
     volume: u32,
+    pub cache_path: String,
 }
 
 impl Config {

@@ -7,5 +7,6 @@
     },
   ],
   "last_track_index": 0,
-  "volume": 100
+  "volume": 100,
+  "cache_path": "/tmp/sanctum"
 }

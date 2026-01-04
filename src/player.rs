@@ -126,11 +126,11 @@ impl Player {
             }
         }
     }
-    pub fn set_index(&mut self, index: usize) {
+    pub fn set_index(&mut self, index: usize, mpris: &Server<MprisHandler>) {
         self.current_index = index;
 
         if self.sink.is_paused() {
-            self.sink.play();
+            self.resume(mpris);
         }
 
         if !self.idle() {
@@ -227,6 +227,7 @@ impl Player {
             .album(song.album.clone())
             .length(Time::from_secs(song.duration.clone() as i64))
             .trackid(TrackId::NO_TRACK)
+            .art_url(format!("file:///tmp/sanctum/{}", song.album.clone()))
             .build();
 
         futures::executor::block_on(mpris.properties_changed([Property::Metadata(metadata)]))
@@ -315,6 +316,7 @@ impl Player {
             MprisState::Loop => self.repeat(),
             MprisState::Metadata => (),
             MprisState::Seek(pos) => self.seek_to(pos),
+            MprisState::Position(pos) => self.seek_to(pos),
             MprisState::Stop => self.stop(mpris),
         }
     }

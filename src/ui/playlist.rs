@@ -3,10 +3,20 @@ use crate::format_timestamp;
 use crate::load_cover_art;
 
 pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
+    let current_index = sanc.player.current_index;
     ui.centered_and_justified(|ui| {
         egui::Grid::new("song_list")
-            .striped(true)
             .min_row_height(48.)
+            .striped(true)
+            .with_row_color(move |index, _style| {
+                if index == current_index {
+                    Some(egui::Color32::from_rgb(1, 92, 128))
+                } else if index % 2 == 0 {
+                    Some(egui::Color32::from_rgb(32, 32, 32))
+                } else {
+                    None
+                }
+            })
             .show(ui, |ui| {
                 for list_index in 0..sanc.songs.len() {
                     let song = &sanc.songs[list_index];
@@ -16,7 +26,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                             .font(egui::FontId::proportional(18.0)),
                     );
 
-                    load_cover_art(ui, &mut sanc.covers, &mut sanc.loading_covers, song);
+                    load_cover_art(ui, &mut sanc.cache, song);
 
                     let song_title = egui::Button::new(
                         egui::RichText::new(format!("{}", song.title))
@@ -27,7 +37,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                     let song_title = ui.add(song_title);
 
                     if song_title.clicked() {
-                        sanc.player.set_index(list_index);
+                        sanc.player.set_index(list_index, &sanc.mpris);
                     }
 
                     song_title.context_menu(|ui| {

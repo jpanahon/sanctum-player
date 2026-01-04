@@ -19,6 +19,7 @@ pub enum MprisState {
     Volume(f64),
     Seek(i64),
     Stop,
+    Position(i64),
 }
 
 pub struct MprisHandler {
@@ -116,11 +117,11 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn position(&self) -> fdo::Result<Time> {
-        Ok(Time::ZERO)
+        Ok(Time::from_secs(69))
     }
 
-    async fn set_position(&self, track_id: TrackId, position: Time) -> fdo::Result<()> {
-        println!("SetPosition({track_id}, {position:?})");
+    async fn set_position(&self, _track_id: TrackId, position: Time) -> fdo::Result<()> {
+        let _ = self.tx.send(MprisState::Position(position.as_secs()));
         Ok(())
     }
 

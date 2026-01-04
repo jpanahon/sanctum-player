@@ -26,7 +26,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
 
             if search.ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
                 println!("This worked!");
-                sanc.player.set_index(sanc.search.results[0].0);
+                sanc.player.set_index(sanc.search.results[0].0, &sanc.mpris);
                 sanc.search.close_modal();
             }
 
@@ -37,12 +37,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                         for (index, _) in sanc.search.results.iter().take(50) {
                             let song = &sanc.songs[*index];
                             ui.horizontal_wrapped(|ui| {
-                                load_cover_art(
-                                    ui,
-                                    &mut sanc.covers,
-                                    &mut sanc.loading_covers,
-                                    &song,
-                                );
+                                load_cover_art(ui, &mut sanc.cache, &song);
                                 let song_title = ui.add(
                                     egui::Button::new(
                                         egui::RichText::new(format!(
@@ -55,8 +50,21 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                                 );
 
                                 if song_title.clicked() {
-                                    sanc.player.set_index(*index);
+                                    sanc.player.set_index(*index, &sanc.mpris);
                                     sanc.search.modal = false;
+                                }
+
+                                let queue_button = egui::Button::new(
+                                    egui::RichText::new("+").font(egui::FontId::proportional(36.)),
+                                )
+                                .frame(false);
+
+                                ui.add_space(ui.available_size_before_wrap().x - 36.);
+
+                                let queue_song = ui.add(queue_button);
+
+                                if queue_song.clicked() {
+                                    sanc.player.add_queue(*index);
                                 }
                             });
                             ui.separator();

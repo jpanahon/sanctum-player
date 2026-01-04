@@ -84,45 +84,44 @@ fn load_songs(main_dir: String) -> Vec<Song> {
     songs
 }
 
-fn load_cover_art(
-    ui: &mut egui::Ui,
-    covers: &mut HashMap<String, egui::TextureHandle>,
-    loading_covers: &mut HashSet<String>,
-    song: &Song,
-) {
-    let response = if let Some(cover_art) = covers.get(&song.album) {
-        ui.add(egui::Image::new(cover_art))
+fn load_cover_art(ui: &mut egui::Ui, cache: &mut SancCache, song: &Song) {
+    let cache_path = std::path::Path::new(&cache.path);
+
+    if !cache_path.exists() {
+        std::fs::create_dir(cache_path).expect("Can't create cache folder!");
+    }
+
+    let response = if let Some(cover_art) = cache.covers.get(&song.album) {
+        ui.add_sized([48., 48.], egui::Image::new(format!("file://{cover_art}")))
     } else {
         ui.allocate_response(egui::vec2(48., 48.), egui::Sense::hover())
     };
 
     let is_visible = response.rect.intersects(ui.clip_rect());
 
-    if is_visible && !covers.contains_key(&song.album) && !loading_covers.contains(&song.album) {
-        loading_covers.insert(song.album.clone());
+    if is_visible
+        && !cache.covers.contains_key(&song.album)
+        && !cache.loading_covers.contains(&song.album)
+    {
+        cache.loading_covers.insert(song.album.clone());
 
-        covers.entry(song.album.clone()).or_insert_with(|| {
+        cache.covers.entry(song.album.clone()).or_insert_with(|| {
             let image = song.cover.data();
             let image_data = image::load_from_memory(image)
                 .expect(format!("Can't load album art: {}", song.path).as_str());
 
-            let cover_data = image_data.resize_exact(48, 48, image::imageops::Nearest);
+            let cover_data = image_data.resize_exact(256, 256, image::imageops::Nearest);
 
-            let image_size = [cover_data.width() as _, cover_data.height() as _];
-            let image_buffer = cover_data.to_rgba8();
-            let pixels = image_buffer.as_flat_samples();
+            let image_path = format!("{}/{}.png", cache.path, song.album.clone());
 
-            let color_image =
-                egui::ColorImage::from_rgba_unmultiplied(image_size, pixels.as_slice());
+            cover_data
+                .save(image_path.clone())
+                .expect(format!("Can't save image: {}", song.path.clone()).as_str());
 
-            ui.ctx().load_texture(
-                song.album.clone(),
-                egui::ImageData::from(color_image),
-                egui::TextureOptions::default(),
-            )
+            image_path
         });
 
-        loading_covers.remove(&song.album);
+        cache.loading_covers.remove(&song.album);
     }
 }
 
@@ -139,11 +138,16 @@ pub struct Sanctum {
     config: Config,
     playlists: Vec<Playlist>,
     songs: Vec<Song>,
-    covers: HashMap<String, egui::TextureHandle>,
-    loading_covers: HashSet<String>,
+    cache: SancCache,
     search: Search,
     mpris: Server<MprisHandler>,
     receiver: mpsc::Receiver<MprisState>,
+}
+
+pub struct SancCache {
+    covers: HashMap<String, String>,
+    loading_covers: HashSet<String>,
+    path: String,
 }
 
 impl Sanctum {
@@ -165,8 +169,15 @@ impl Sanctum {
         let volume = config.get_volume();
         player.volume(volume);
 
-        let covers: HashMap<String, egui::TextureHandle> = HashMap::new();
+        let covers: HashMap<String, String> = HashMap::new();
         let loading_covers: HashSet<String> = HashSet::new();
+        let cache_path = config.cache_path.clone();
+
+        let sanc_cache = SancCache {
+            covers: covers,
+            loading_covers: loading_covers,
+            path: cache_path,
+        };
 
         let mut songs = load_songs(current_playlist.path.clone());
         songs.sort_unstable_by_key(|item| item.artist.to_lowercase().clone());
@@ -184,8 +195,7 @@ impl Sanctum {
             volume: volume,
             playlists: playlists,
             songs: songs,
-            covers: covers,
-            loading_covers: loading_covers,
+            cache: sanc_cache,
             search: Search::default(),
             mpris: mpris,
             receiver: rx,
