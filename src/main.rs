@@ -3,10 +3,13 @@ use eframe::egui;
 use lofty::prelude::*;
 use lofty::probe::Probe;
 
+use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::mpsc;
+use std::time::SystemTime;
 
+use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 pub mod config;
 use config::Config;
 
@@ -39,6 +42,47 @@ fn main() -> eframe::Result {
     )
 }
 
+fn hash_album(album: String) -> String {
+    utf8_percent_encode(&album, NON_ALPHANUMERIC).to_string()
+}
+
+fn dehash_album(album: String) -> String {
+    percent_decode_str(&album)
+        .decode_utf8()
+        .expect("Can't decode hash!")
+        .to_string()
+}
+
+fn format_date(created: SystemTime) -> String {
+    let age = match SystemTime::now().duration_since(created) {
+        Ok(d) => d,
+        Err(_) => {
+            let date_time: DateTime<Local> = created.into();
+            return date_time.format("%d/%m/%y").to_string();
+        }
+    };
+
+    let secs = age.as_secs();
+
+    const MIN: u64 = 60;
+    const HOUR: u64 = 60 * MIN;
+    const DAY: u64 = 24 * HOUR;
+    const WEEK: u64 = 7 * DAY;
+
+    if secs < MIN {
+        "just now".to_string()
+    } else if secs < HOUR {
+        format!("{} min ago", secs / MIN)
+    } else if secs < DAY {
+        format!("{} hrs ago", secs / HOUR)
+    } else if secs < WEEK {
+        format!("{} days ago", secs / DAY)
+    } else {
+        let date_time: DateTime<Local> = created.into();
+        date_time.format("%d/%m/%y").to_string()
+    }
+}
+
 fn load_songs(main_dir: String) -> Vec<Song> {
     let mut songs: Vec<Song> = Vec::new();
 
@@ -63,6 +107,10 @@ fn load_songs(main_dir: String) -> Vec<Song> {
         let duration = properties.duration();
         let seconds = duration.as_secs();
 
+        let metadata = entry.metadata().expect("No metadata found!");
+        let created_time = metadata.created().ok().unwrap();
+        let created_date = format_date(created_time);
+
         let song = Song {
             title: tag.title().as_deref().unwrap_or("Unknown").to_string(),
             artist: tag.artist().as_deref().unwrap_or("Unknown").to_string(),
@@ -76,6 +124,8 @@ fn load_songs(main_dir: String) -> Vec<Song> {
                 tag.artist().as_deref().unwrap_or("Unknown").to_lowercase(),
                 tag.album().as_deref().unwrap_or("Unknown").to_lowercase(),
             ),
+            created: created_time,
+            created_date: created_date,
         };
 
         songs.push(song);
@@ -89,6 +139,14 @@ fn load_cover_art(ui: &mut egui::Ui, cache: &mut SancCache, song: &Song) {
 
     if !cache_path.exists() {
         std::fs::create_dir(cache_path).expect("Can't create cache folder!");
+    } else {
+        for entry in std::fs::read_dir(cache_path).expect("Cache folder not found!") {
+            let entry = entry.expect("Entry not found!");
+            cache.covers.insert(
+                dehash_album(entry.file_name().display().to_string()),
+                entry.path().display().to_string(),
+            );
+        }
     }
 
     let response = if let Some(cover_art) = cache.covers.get(&song.album) {
@@ -112,11 +170,11 @@ fn load_cover_art(ui: &mut egui::Ui, cache: &mut SancCache, song: &Song) {
 
             let cover_data = image_data.resize_exact(256, 256, image::imageops::Nearest);
 
-            let image_path = format!("{}/{}.png", cache.path, song.album.clone());
+            let image_path = format!("{}/{}.png", cache.path, hash_album(song.album.clone()));
 
             cover_data
                 .save(image_path.clone())
-                .expect(format!("Can't save image: {}", song.path.clone()).as_str());
+                .expect(format!("Can't save image: {}", song.album.clone()).as_str());
 
             image_path
         });
@@ -131,7 +189,6 @@ fn format_timestamp(timestamp: u64) -> String {
 
     format!("{:02}:{:02}", minutes, seconds)
 }
-
 pub struct Sanctum {
     player: Player,
     volume: u32,
@@ -180,7 +237,7 @@ impl Sanctum {
         };
 
         let mut songs = load_songs(current_playlist.path.clone());
-        songs.sort_unstable_by_key(|item| item.artist.to_lowercase().clone());
+        songs.sort_unstable_by_key(|item| std::cmp::Reverse(item.created.clone()));
 
         let (tx, rx) = mpsc::channel::<MprisState>();
 

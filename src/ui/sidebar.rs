@@ -14,7 +14,7 @@ pub fn sidebar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             sanc.config.set_track(0);
             sanc.songs = load_songs(sanc.playlists[index].path.clone());
             sanc.songs
-                .sort_unstable_by_key(|item| item.artist.to_lowercase().clone());
+                .sort_unstable_by_key(|item| std::cmp::Reverse(item.created));
 
             sanc.player.set_index(0, &sanc.mpris);
         }

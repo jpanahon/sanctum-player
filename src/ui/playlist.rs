@@ -4,8 +4,10 @@ use crate::load_cover_art;
 
 pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
     let current_index = sanc.player.current_index;
+    let col_width = ui.max_rect().width() / 2.5;
     ui.centered_and_justified(|ui| {
         egui::Grid::new("song_list")
+            .max_col_width(col_width)
             .min_row_height(48.)
             .striped(true)
             .with_row_color(move |index, _style| {
@@ -53,6 +55,11 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
 
                     ui.label(
                         egui::RichText::new(format!("{}", song.album))
+                            .font(egui::FontId::proportional(18.0)),
+                    );
+
+                    ui.label(
+                        egui::RichText::new(format!("{}", song.created_date))
                             .font(egui::FontId::proportional(18.0)),
                     );
 

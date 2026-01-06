@@ -25,7 +25,6 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             }
 
             if search.ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                println!("This worked!");
                 sanc.player.set_index(sanc.search.results[0].0, &sanc.mpris);
                 sanc.search.close_modal();
             }

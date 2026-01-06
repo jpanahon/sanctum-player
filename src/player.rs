@@ -2,7 +2,7 @@ use crate::Config;
 use crate::mpris::{MprisHandler, MprisState};
 use mpris_server::{Metadata, PlaybackStatus, Property, Server, Time, TrackId};
 use rand::Rng;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 pub struct Song {
     pub title: String,
@@ -13,6 +13,8 @@ pub struct Song {
     pub duration: u64,
 
     pub search_key: String,
+    pub created: SystemTime,
+    pub created_date: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
