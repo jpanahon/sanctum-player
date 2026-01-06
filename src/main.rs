@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::sync::mpsc;
 use std::time::SystemTime;
 
-use percent_encoding::{NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE};
 pub mod config;
 use config::Config;
 
@@ -43,14 +43,14 @@ fn main() -> eframe::Result {
 }
 
 fn hash_album(album: String) -> String {
-    utf8_percent_encode(&album, NON_ALPHANUMERIC).to_string()
+    URL_SAFE.encode(album).to_string()
 }
 
 fn dehash_album(album: String) -> String {
-    percent_decode_str(&album)
-        .decode_utf8()
-        .expect("Can't decode hash!")
-        .to_string()
+    let decoded = URL_SAFE
+        .decode(&album)
+        .expect(format!("Can't decode string: {}", album.clone()).as_str());
+    String::from_utf8(decoded).expect("Can't decode!")
 }
 
 fn format_date(created: SystemTime) -> String {
@@ -142,8 +142,11 @@ fn load_cover_art(ui: &mut egui::Ui, cache: &mut SancCache, song: &Song) {
     } else {
         for entry in std::fs::read_dir(cache_path).expect("Cache folder not found!") {
             let entry = entry.expect("Entry not found!");
+            let path = entry.path();
+
+            let file_name = path.file_stem().expect("Can't get file name!");
             cache.covers.insert(
-                dehash_album(entry.file_name().display().to_string()),
+                dehash_album(file_name.display().to_string()),
                 entry.path().display().to_string(),
             );
         }
@@ -170,7 +173,7 @@ fn load_cover_art(ui: &mut egui::Ui, cache: &mut SancCache, song: &Song) {
 
             let cover_data = image_data.resize_exact(256, 256, image::imageops::Nearest);
 
-            let image_path = format!("{}/{}.png", cache.path, hash_album(song.album.clone()));
+            let image_path = format!("{}/{}.jpg", cache.path, hash_album(song.album.clone()));
 
             cover_data
                 .save(image_path.clone())
@@ -304,7 +307,7 @@ impl eframe::App for Sanctum {
             play_state = play_symbols[1];
         }
 
-        self.player.process(&self.songs, &self.mpris);
+        self.player.process(&self.songs, &self.mpris, &self.cache);
 
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
             ui::playbar::playbar(ui, &play_state, self);

@@ -135,7 +135,6 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
-        println!("LoopStatus");
         Ok(LoopStatus::None)
     }
 
@@ -145,7 +144,6 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn rate(&self) -> fdo::Result<PlaybackRate> {
-        println!("Rate");
         Ok(PlaybackRate::default())
     }
 
@@ -197,12 +195,10 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn minimum_rate(&self) -> fdo::Result<PlaybackRate> {
-        println!("MinimumRate");
         Ok(PlaybackRate::default())
     }
 
     async fn maximum_rate(&self) -> fdo::Result<PlaybackRate> {
-        println!("MaximumRate");
         Ok(PlaybackRate::default())
     }
 }
