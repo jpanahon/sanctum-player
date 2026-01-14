@@ -23,8 +23,10 @@ pub mod ui;
 
 pub mod player;
 use player::Player;
-use player::Playlist;
 use player::Song;
+
+pub mod playlist;
+use playlist::{Playlist, sort_songs};
 
 pub mod search;
 use search::Search;
@@ -72,9 +74,9 @@ fn format_date(created: SystemTime) -> String {
     if secs < MIN {
         "just now".to_string()
     } else if secs < HOUR {
-        format!("{} min ago", secs / MIN)
+        format!("{} minutes ago", secs / MIN)
     } else if secs < DAY {
-        format!("{} hrs ago", secs / HOUR)
+        format!("{} hours ago", secs / HOUR)
     } else if secs < WEEK {
         format!("{} days ago", secs / DAY)
     } else {
@@ -196,8 +198,10 @@ pub struct Sanctum {
     player: Player,
     volume: u32,
     config: Config,
+    current_playlist: Playlist,
     playlists: Vec<Playlist>,
     songs: Vec<Song>,
+    song_view: Vec<usize>,
     cache: SancCache,
     search: Search,
     mpris: Server<MprisHandler>,
@@ -205,9 +209,9 @@ pub struct Sanctum {
 }
 
 pub struct SancCache {
+    path: String,
     covers: HashMap<String, String>,
     loading_covers: HashSet<String>,
-    path: String,
 }
 
 impl Sanctum {
@@ -239,8 +243,10 @@ impl Sanctum {
             path: cache_path,
         };
 
-        let mut songs = load_songs(current_playlist.path.clone());
-        songs.sort_unstable_by_key(|item| std::cmp::Reverse(item.created.clone()));
+        let songs = load_songs(current_playlist.path.clone());
+
+        let mut song_view: Vec<usize> = (0..songs.len()).collect();
+        sort_songs(current_playlist.clone(), &mut song_view, &songs);
 
         let (tx, rx) = mpsc::channel::<MprisState>();
 
@@ -253,8 +259,10 @@ impl Sanctum {
             config: config,
             player: player,
             volume: volume,
+            current_playlist: current_playlist,
             playlists: playlists,
             songs: songs,
+            song_view: song_view,
             cache: sanc_cache,
             search: Search::default(),
             mpris: mpris,
@@ -325,7 +333,7 @@ impl eframe::App for Sanctum {
             });
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui::playlist::playlist(ui, self);
+                ui::tracklist::playlist(ui, self);
             });
         });
 
@@ -333,6 +341,7 @@ impl eframe::App for Sanctum {
 
         if close {
             self.config.set_track(self.player.current_index);
+            self.config.update_playlist(self.current_playlist.clone());
             let new_config =
                 serde_json::to_string_pretty(&self.config).expect("Can't export config!");
             std::fs::write("config.json", new_config).expect("Can't update config!");

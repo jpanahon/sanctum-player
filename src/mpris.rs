@@ -15,7 +15,6 @@ pub enum MprisState {
     Previous,
     Shuffle(bool),
     Loop,
-    Metadata,
     Volume(f64),
     Seek(i64),
     Stop,

@@ -9,31 +9,25 @@ pub struct Song {
     pub title: String,
     pub artist: String,
     pub album: String,
-    pub cover: lofty::picture::Picture,
-    pub path: String,
-    pub duration: u64,
-
     pub search_key: String,
-    pub created: SystemTime,
-    pub created_date: String,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
-pub struct Playlist {
-    pub name: String,
     pub path: String,
+    pub created_date: String,
+
+    pub duration: u64,
+    pub created: SystemTime,
+    pub cover: lofty::picture::Picture,
 }
 
 pub struct Player {
     pub _stream_handle: rodio::OutputStream,
     pub sink: rodio::Sink,
+    pub track_pos: u64,
     pub current_index: usize,
     pub prev_index: usize,
+    pub queue: Vec<usize>,
     pub shuffle: bool,
     pub repeat: bool,
-    pub track_pos: u64,
     pub skip: bool,
-    pub queue: Vec<usize>,
 }
 
 impl Default for Player {
@@ -56,6 +50,7 @@ impl Default for Player {
         }
     }
 }
+
 impl Player {
     pub fn handle_keybinds(
         &mut self,
@@ -320,7 +315,6 @@ impl Player {
             MprisState::Previous => self.previous(songs),
             MprisState::Shuffle(toggle_shuffle) => self.set_shuffle(toggle_shuffle),
             MprisState::Loop => self.repeat(),
-            MprisState::Metadata => (),
             MprisState::Seek(pos) => self.seek_to(pos),
             MprisState::Position(pos) => self.seek_to(pos),
             MprisState::Stop => self.stop(mpris),

@@ -1,4 +1,4 @@
-use crate::player::Playlist;
+use crate::Playlist;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Config {
@@ -40,5 +40,9 @@ impl Config {
 
     pub fn set_track(&mut self, last_index: usize) {
         self.last_track_index = last_index
+    }
+
+    pub fn update_playlist(&mut self, playlist: Playlist) {
+        self.playlists[self.current_playlist] = playlist;
     }
 }
