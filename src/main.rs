@@ -16,8 +16,7 @@ use config::Config;
 pub mod mpris;
 use mpris::MprisHandler;
 use mpris::MprisState;
-
-use mpris_server::Server;
+use mpris_server::{Metadata, Property, Server, Time, TrackId};
 
 pub mod ui;
 
@@ -315,7 +314,28 @@ impl eframe::App for Sanctum {
             play_state = play_symbols[1];
         }
 
-        self.player.process(&self.songs, &self.mpris, &self.cache);
+        self.player.process(&self.songs);
+
+        {
+            let song = &self.songs[self.player.current_index];
+            let mut metadata = Metadata::builder()
+                .title(song.title.clone())
+                .artist(vec![song.artist.clone()])
+                .album(song.album.clone())
+                .length(Time::from_secs(song.duration.clone() as i64))
+                .trackid(TrackId::NO_TRACK)
+                .build();
+
+            if let Some(cover_art) = self.cache.covers.get(&song.album) {
+                metadata.set_art_url(Some(format!("file://{}", cover_art)));
+            }
+
+            futures::executor::block_on(
+                self.mpris
+                    .properties_changed([Property::Metadata(metadata)]),
+            )
+            .expect("Failed to update metadata!");
+        }
 
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
             ui::playbar::playbar(ui, &play_state, self);

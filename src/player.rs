@@ -1,7 +1,6 @@
 use crate::Config;
-use crate::SancCache;
 use crate::mpris::{MprisHandler, MprisState};
-use mpris_server::{Metadata, PlaybackStatus, Property, Server, Time, TrackId};
+use mpris_server::{PlaybackStatus, Property, Server};
 use rand::Rng;
 use std::time::{Duration, SystemTime};
 
@@ -140,7 +139,7 @@ impl Player {
         self.sink.empty() || self.sink.is_paused()
     }
 
-    pub fn process(&mut self, songs: &Vec<Song>, mpris: &Server<MprisHandler>, cache: &SancCache) {
+    pub fn process(&mut self, songs: &Vec<Song>) {
         self.track_pos = self.sink.get_pos().as_secs();
 
         let max_duration = songs[self.current_index].duration;
@@ -155,7 +154,7 @@ impl Player {
 
         if self.repeat {
             if self.sink.empty() {
-                self.play(songs, mpris, cache);
+                self.play(songs);
             }
         }
 
@@ -165,7 +164,7 @@ impl Player {
                 self.current_index = rng.random_range(0..=songs.len() - 1);
             }
 
-            self.play(songs, mpris, cache);
+            self.play(songs);
 
             if self.skip {
                 self.sink.skip_one();
@@ -213,26 +212,11 @@ impl Player {
         self.queue.push(index);
     }
 
-    fn play(&mut self, songs: &Vec<Song>, mpris: &Server<MprisHandler>, cache: &SancCache) {
+    fn play(&mut self, songs: &Vec<Song>) {
         let song = &songs[self.current_index];
         let song_path = song.path.clone();
         let song_file = std::fs::File::open(song_path).unwrap();
         let decoder = rodio::Decoder::try_from(song_file).expect("Unable to make decoder!");
-
-        let mut metadata = Metadata::builder()
-            .title(song.title.clone())
-            .artist(vec![song.artist.clone()])
-            .album(song.album.clone())
-            .length(Time::from_secs(song.duration.clone() as i64))
-            .trackid(TrackId::NO_TRACK)
-            .build();
-
-        if let Some(cover_art) = cache.covers.get(&song.album) {
-            metadata.set_art_url(Some(format!("file://{}", cover_art)));
-        }
-
-        futures::executor::block_on(mpris.properties_changed([Property::Metadata(metadata)]))
-            .expect("Failed to update metadata!");
 
         self.sink.append(decoder);
     }
