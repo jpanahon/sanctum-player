@@ -1,4 +1,4 @@
-use crate::player::Song;
+use crate::songs::Song;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub enum Sort {
@@ -17,7 +17,7 @@ pub struct Playlist {
     pub sort_order: Sort,
 }
 
-pub fn sort_songs(playlist: Playlist, song_view: &mut Vec<usize>, songs: &Vec<Song>) {
+pub fn sort_songs(playlist: Playlist, song_view: &mut [usize], songs: &[Song]) {
     let sort = playlist.sort_order();
     song_view.sort_by(|&view, &song| {
         let (order, reverse) = match sort {
@@ -25,25 +25,22 @@ pub fn sort_songs(playlist: Playlist, song_view: &mut Vec<usize>, songs: &Vec<So
             Sort::Title { reverse } => (
                 songs[view]
                     .title
-                    .clone()
                     .to_lowercase()
-                    .cmp(&songs[song].title.clone().to_lowercase()),
+                    .cmp(&songs[song].title.to_lowercase()),
                 reverse,
             ),
             Sort::Artist { reverse } => (
                 songs[view]
                     .artist
-                    .clone()
                     .to_lowercase()
-                    .cmp(&songs[song].artist.clone().to_lowercase()),
+                    .cmp(&songs[song].artist.to_lowercase()),
                 reverse,
             ),
             Sort::Album { reverse } => (
                 songs[view]
                     .album
-                    .clone()
                     .to_lowercase()
-                    .cmp(&songs[song].album.clone().to_lowercase()),
+                    .cmp(&songs[song].album.to_lowercase()),
                 reverse,
             ),
             Sort::Date { reverse } => (songs[view].created.cmp(&songs[song].created), reverse),

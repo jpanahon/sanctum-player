@@ -1,34 +1,38 @@
 use eframe::egui;
 
-use lofty::prelude::*;
-use lofty::probe::Probe;
+use std::sync::Arc;
+use std::sync::Mutex;
 
-use chrono::{DateTime, Local};
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::sync::mpsc;
-use std::time::SystemTime;
-
-use base64::{Engine as _, engine::general_purpose::URL_SAFE};
 pub mod config;
 use config::Config;
 
+pub mod cache;
+use cache::{SancCache, load_cache};
+
 pub mod mpris;
 use mpris::MprisHandler;
-use mpris::MprisState;
-use mpris_server::{Metadata, Property, Server, Time, TrackId};
+use mpris_server::Server;
 
 pub mod ui;
+pub mod utils;
 
 pub mod player;
 use player::Player;
-use player::Song;
+use player::PlayerState;
 
 pub mod playlist;
 use playlist::{Playlist, sort_songs};
 
 pub mod search;
 use search::Search;
+
+pub mod songs;
+use songs::Song;
+
+use mimalloc::MiMalloc;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -43,156 +47,6 @@ fn main() -> eframe::Result {
     )
 }
 
-fn hash_album(album: String) -> String {
-    URL_SAFE.encode(album).to_string()
-}
-
-fn dehash_album(album: String) -> String {
-    let decoded = URL_SAFE
-        .decode(&album)
-        .expect(format!("Can't decode string: {}", album.clone()).as_str());
-    String::from_utf8(decoded).expect("Can't decode!")
-}
-
-fn format_date(created: SystemTime) -> String {
-    let age = match SystemTime::now().duration_since(created) {
-        Ok(d) => d,
-        Err(_) => {
-            let date_time: DateTime<Local> = created.into();
-            return date_time.format("%d/%m/%y").to_string();
-        }
-    };
-
-    let secs = age.as_secs();
-
-    const MIN: u64 = 60;
-    const HOUR: u64 = 60 * MIN;
-    const DAY: u64 = 24 * HOUR;
-    const WEEK: u64 = 7 * DAY;
-
-    if secs < MIN {
-        "just now".to_string()
-    } else if secs < HOUR {
-        format!("{} minutes ago", secs / MIN)
-    } else if secs < DAY {
-        format!("{} hours ago", secs / HOUR)
-    } else if secs < WEEK {
-        format!("{} days ago", secs / DAY)
-    } else {
-        let date_time: DateTime<Local> = created.into();
-        date_time.format("%d/%m/%y").to_string()
-    }
-}
-
-fn load_songs(main_dir: String) -> Vec<Song> {
-    let mut songs: Vec<Song> = Vec::new();
-
-    for entry in std::fs::read_dir(main_dir).expect("Music folder not found!") {
-        let entry = entry.expect("Entries found!");
-        let path = entry.path();
-
-        let song_path = path.display().to_string();
-
-        let tag_file = Probe::open(path.as_path())
-            .expect(format!("Can't find file: {}", song_path).as_str())
-            .read()
-            .expect(format!("Can't read file: {}", song_path).as_str());
-
-        let tag = tag_file
-            .primary_tag()
-            .or_else(|| tag_file.first_tag())
-            .expect(&format!("No tags found!: {}", song_path));
-
-        let properties = tag_file.properties();
-
-        let duration = properties.duration();
-        let seconds = duration.as_secs();
-
-        let metadata = entry.metadata().expect("No metadata found!");
-        let created_time = metadata.created().ok().unwrap();
-        let created_date = format_date(created_time);
-
-        let song = Song {
-            title: tag.title().as_deref().unwrap_or("Unknown").to_string(),
-            artist: tag.artist().as_deref().unwrap_or("Unknown").to_string(),
-            album: tag.album().as_deref().unwrap_or("Unknown").to_string(),
-            cover: (tag.pictures())[0].clone(),
-            path: song_path,
-            duration: seconds,
-            search_key: format!(
-                "{} {} {}",
-                tag.title().as_deref().unwrap_or("Unknown").to_lowercase(),
-                tag.artist().as_deref().unwrap_or("Unknown").to_lowercase(),
-                tag.album().as_deref().unwrap_or("Unknown").to_lowercase(),
-            ),
-            created: created_time,
-            created_date: created_date,
-        };
-
-        songs.push(song);
-    }
-
-    songs
-}
-
-fn load_cover_art(ui: &mut egui::Ui, cache: &mut SancCache, song: &Song) {
-    let cache_path = std::path::Path::new(&cache.path);
-
-    if !cache_path.exists() {
-        std::fs::create_dir(cache_path).expect("Can't create cache folder!");
-    } else {
-        for entry in std::fs::read_dir(cache_path).expect("Cache folder not found!") {
-            let entry = entry.expect("Entry not found!");
-            let path = entry.path();
-
-            let file_name = path.file_stem().expect("Can't get file name!");
-            cache.covers.insert(
-                dehash_album(file_name.display().to_string()),
-                entry.path().display().to_string(),
-            );
-        }
-    }
-
-    let response = if let Some(cover_art) = cache.covers.get(&song.album) {
-        ui.add_sized([48., 48.], egui::Image::new(format!("file://{cover_art}")))
-    } else {
-        ui.allocate_response(egui::vec2(48., 48.), egui::Sense::hover())
-    };
-
-    let is_visible = response.rect.intersects(ui.clip_rect());
-
-    if is_visible
-        && !cache.covers.contains_key(&song.album)
-        && !cache.loading_covers.contains(&song.album)
-    {
-        cache.loading_covers.insert(song.album.clone());
-
-        cache.covers.entry(song.album.clone()).or_insert_with(|| {
-            let image = song.cover.data();
-            let image_data = image::load_from_memory(image)
-                .expect(format!("Can't load album art: {}", song.path).as_str());
-
-            let cover_data = image_data.resize_exact(256, 256, image::imageops::Nearest);
-
-            let image_path = format!("{}/{}.jpg", cache.path, hash_album(song.album.clone()));
-
-            cover_data
-                .save(image_path.clone())
-                .expect(format!("Can't save image: {}", song.album.clone()).as_str());
-
-            image_path
-        });
-
-        cache.loading_covers.remove(&song.album);
-    }
-}
-
-fn format_timestamp(timestamp: u64) -> String {
-    let minutes = timestamp / 60;
-    let seconds = timestamp % 60;
-
-    format!("{:02}:{:02}", minutes, seconds)
-}
 pub struct Sanctum {
     player: Player,
     volume: u32,
@@ -204,13 +58,6 @@ pub struct Sanctum {
     cache: SancCache,
     search: Search,
     mpris: Server<MprisHandler>,
-    receiver: mpsc::Receiver<MprisState>,
-}
-
-pub struct SancCache {
-    path: String,
-    covers: HashMap<String, String>,
-    loading_covers: HashSet<String>,
 }
 
 impl Sanctum {
@@ -222,50 +69,44 @@ impl Sanctum {
 
         let current_playlist = (config.get_playlists())[config.current_playlist()].clone();
 
-        let mut player: Player = Player {
-            current_index: config.get_last_track(),
-            ..Default::default()
-        };
-
-        player.sink.pause();
-
-        let volume = config.get_volume();
-        player.volume(volume);
-
-        let covers: HashMap<String, String> = HashMap::new();
-        let loading_covers: HashSet<String> = HashSet::new();
         let cache_path = config.cache_path.clone();
 
-        let sanc_cache = SancCache {
-            covers: covers,
-            loading_covers: loading_covers,
-            path: cache_path,
-        };
+        let mut sanc_cache = SancCache::new(cache_path);
 
-        let songs = load_songs(current_playlist.path.clone());
+        load_cache(&mut sanc_cache);
+
+        let songs = songs::load_songs(current_playlist.path.clone());
 
         let mut song_view: Vec<usize> = (0..songs.len()).collect();
         sort_songs(current_playlist.clone(), &mut song_view, &songs);
 
-        let (tx, rx) = mpsc::channel::<MprisState>();
+        let shared_state = Arc::new(Mutex::new(PlayerState::default()));
+        let mpris_state = Arc::clone(&shared_state);
+        let player_state = Arc::clone(&shared_state);
 
-        let mpris_handler = MprisHandler { tx: tx };
+        let mpris_handler = MprisHandler { state: mpris_state };
+
+        let mut player: Player = Player::new(config.get_last_track(), player_state);
+
+        let volume = config.get_volume();
+        player.volume(volume);
+
+        player.sink.pause();
 
         let mpris = futures::executor::block_on(Server::new("Sanctum.Player", mpris_handler))
             .expect("Can't make server!");
 
         Self {
-            config: config,
-            player: player,
-            volume: volume,
-            current_playlist: current_playlist,
-            playlists: playlists,
-            songs: songs,
-            song_view: song_view,
+            config,
+            player,
+            volume,
+            current_playlist,
+            playlists,
+            songs,
+            song_view,
             cache: sanc_cache,
             search: Search::default(),
-            mpris: mpris,
-            receiver: rx,
+            mpris,
         }
     }
 }
@@ -274,16 +115,15 @@ impl eframe::App for Sanctum {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
 
-        while let Ok(state) = self.receiver.try_recv() {
-            self.player.handle_mpris(state, &self.songs, &self.mpris);
+        while let Ok((album, image_path)) = self.cache.rx.try_recv() {
+            self.cache.covers.insert(album.clone(), image_path);
+            self.cache.loading_covers.remove(&album);
         }
-
         if !self.search.modal {
             ctx.input(|i| {
                 for event in &i.events {
                     self.player.handle_keybinds(
                         i,
-                        &self.mpris,
                         event,
                         &mut self.volume,
                         &mut self.config,
@@ -305,40 +145,12 @@ impl eframe::App for Sanctum {
             });
         }
 
-        let play_state;
-        let play_symbols = ["▶", "⏸"];
-
-        if self.player.idle() {
-            play_state = play_symbols[0];
-        } else {
-            play_state = play_symbols[1];
-        }
-
         self.player.process(&self.songs);
-
-        {
-            let song = &self.songs[self.player.current_index];
-            let mut metadata = Metadata::builder()
-                .title(song.title.clone())
-                .artist(vec![song.artist.clone()])
-                .album(song.album.clone())
-                .length(Time::from_secs(song.duration.clone() as i64))
-                .trackid(TrackId::NO_TRACK)
-                .build();
-
-            if let Some(cover_art) = self.cache.covers.get(&song.album) {
-                metadata.set_art_url(Some(format!("file://{}", cover_art)));
-            }
-
-            futures::executor::block_on(
-                self.mpris
-                    .properties_changed([Property::Metadata(metadata)]),
-            )
-            .expect("Failed to update metadata!");
-        }
+        self.player
+            .update_state(&self.mpris, &self.cache, &self.songs);
 
         egui::TopBottomPanel::bottom("play_bar").show(ctx, |ui| {
-            ui::playbar::playbar(ui, &play_state, self);
+            ui::playbar::playbar(ui, self.player.is_playing(), self);
         });
 
         egui::SidePanel::left("sidebar").show(ctx, |ui| {

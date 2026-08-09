@@ -1,4 +1,4 @@
-use crate::Song;
+use crate::songs::Song;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 

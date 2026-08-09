@@ -1,5 +1,5 @@
 use crate::Sanctum;
-use crate::load_songs;
+use crate::songs::load_songs;
 
 pub fn sidebar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
     ui.heading(egui::RichText::new("Playlists").font(egui::FontId::proportional(24.0)));
@@ -16,7 +16,7 @@ pub fn sidebar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             sanc.songs
                 .sort_unstable_by_key(|item| std::cmp::Reverse(item.created));
 
-            sanc.player.set_index(0, &sanc.mpris);
+            sanc.player.set_index(0);
         }
     }
 }

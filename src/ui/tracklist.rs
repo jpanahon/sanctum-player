@@ -1,7 +1,7 @@
 use crate::Sanctum;
-use crate::format_timestamp;
-use crate::load_cover_art;
+use crate::cache::load_cover_art;
 use crate::playlist::{Sort, sort_songs};
+use crate::utils::format_timestamp;
 use egui_extras::{Column, TableBuilder};
 
 pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
@@ -196,7 +196,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                         ui.horizontal(|ui| {
                             load_cover_art(ui, &mut sanc.cache, song);
                             let song_title = egui::Button::new(
-                                egui::RichText::new(format!("{}", song.title))
+                                egui::RichText::new(song.title.to_string())
                                     .font(egui::FontId::proportional(18.0)),
                             )
                             .frame(false);
@@ -204,7 +204,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                             let song_title = ui.add(song_title);
 
                             if song_title.clicked() {
-                                sanc.player.set_index(*view_index, &sanc.mpris);
+                                sanc.player.set_index(*view_index);
                             }
 
                             song_title.context_menu(|ui| {
@@ -218,7 +218,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
                             ui.label(
-                                egui::RichText::new(format!("{}", song.artist))
+                                egui::RichText::new(song.artist.to_string())
                                     .font(egui::FontId::proportional(18.0)),
                             );
                         });
@@ -227,7 +227,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
                             ui.label(
-                                egui::RichText::new(format!("{}", song.album))
+                                egui::RichText::new(song.album.to_string())
                                     .font(egui::FontId::proportional(18.0)),
                             );
                         });
@@ -236,7 +236,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
                             ui.label(
-                                egui::RichText::new(format!("{}", song.created_date))
+                                egui::RichText::new(song.created_date.to_string())
                                     .font(egui::FontId::proportional(18.0)),
                             );
                         });
@@ -247,7 +247,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                             let timestamp = format_timestamp(song.duration);
 
                             ui.label(
-                                egui::RichText::new(format!("{}", timestamp))
+                                egui::RichText::new(timestamp)
                                     .font(egui::FontId::proportional(18.0)),
                             );
                         });

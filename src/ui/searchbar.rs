@@ -1,5 +1,5 @@
 use crate::Sanctum;
-use crate::load_cover_art;
+use crate::cache::load_cover_art;
 
 pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
     let search_button =
@@ -25,7 +25,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             }
 
             if search.ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                sanc.player.set_index(sanc.search.results[0].0, &sanc.mpris);
+                sanc.player.set_index(sanc.search.results[0].0);
                 sanc.search.close_modal();
             }
 
@@ -49,7 +49,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                                 );
 
                                 if song_title.clicked() {
-                                    sanc.player.set_index(*index, &sanc.mpris);
+                                    sanc.player.set_index(*index);
                                     sanc.search.modal = false;
                                 }
 

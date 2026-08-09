@@ -1,4 +1,6 @@
-use std::sync::mpsc;
+use crate::player::PlayerState;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use mpris_server::{
     LoopStatus, Metadata, PlaybackRate, PlaybackStatus, PlayerInterface, RootInterface, Time,
@@ -6,23 +8,23 @@ use mpris_server::{
     zbus::{Result, fdo},
 };
 
-#[derive(Debug)]
-pub enum MprisState {
-    Play,
-    Pause,
-    PlayPause,
-    Next,
-    Previous,
-    Shuffle(bool),
-    Loop,
-    Volume(f64),
-    Seek(i64),
-    Stop,
-    Position(i64),
-}
+// #[derive(Debug)]
+// pub enum MprisState {
+//     Play,
+//     Pause,
+//     PlayPause,
+//     Next,
+//     Previous,
+//     Shuffle(bool),
+//     Loop,
+//     Volume(f64),
+//     Seek(i64),
+//     Stop,
+//     Position(i64),
+// }
 
 pub struct MprisHandler {
-    pub tx: mpsc::Sender<MprisState>,
+    pub state: Arc<Mutex<PlayerState>>,
 }
 
 impl RootInterface for MprisHandler {
@@ -77,32 +79,51 @@ impl RootInterface for MprisHandler {
 
 impl PlayerInterface for MprisHandler {
     async fn next(&self) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::Next);
+        if let Ok(mut state) = self.state.lock() {
+            state.skip = true;
+        }
+
         Ok(())
     }
 
     async fn previous(&self) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::Previous);
+        if let Ok(mut state) = self.state.lock() {
+            state.previous = true;
+        }
         Ok(())
     }
 
     async fn pause(&self) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::Pause);
+        println!("Triggered: Pause");
+        if let Ok(mut state) = self.state.lock() {
+            state.pause = true;
+        }
+
         Ok(())
     }
 
     async fn play_pause(&self) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::PlayPause);
+        println!("Triggered: Play Pause");
+        if let Ok(mut state) = self.state.lock() {
+            state.play_pause = true;
+        }
+
         Ok(())
     }
 
     async fn stop(&self) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::Stop);
+        if let Ok(mut state) = self.state.lock() {
+            state.stop = true;
+        }
+
         Ok(())
     }
 
     async fn play(&self) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::Play);
+        println!("Triggered: Play");
+        if let Ok(mut state) = self.state.lock() {
+            state.play = true;
+        }
         Ok(())
     }
 
@@ -111,16 +132,21 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn set_shuffle(&self, shuffle: bool) -> Result<()> {
-        let _ = self.tx.send(MprisState::Shuffle(shuffle));
+        if let Ok(mut state) = self.state.lock() {
+            state.shuffle = shuffle;
+        }
+
         Ok(())
     }
 
     async fn position(&self) -> fdo::Result<Time> {
-        Ok(Time::from_secs(69))
+        let state = self.state.lock().unwrap();
+        Ok(Time::from_secs(state.player_pos as i64))
     }
 
     async fn set_position(&self, _track_id: TrackId, position: Time) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::Position(position.as_secs()));
+        let mut state = self.state.lock().unwrap();
+        state.mpris_pos = position.as_secs() as u64;
         Ok(())
     }
 
@@ -130,15 +156,31 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn playback_status(&self) -> fdo::Result<PlaybackStatus> {
-        Ok(PlaybackStatus::Paused)
+        let state = self.state.lock().unwrap();
+        Ok(state.status)
     }
 
     async fn loop_status(&self) -> fdo::Result<LoopStatus> {
-        Ok(LoopStatus::None)
+        let state = self.state.lock().unwrap();
+
+        let loop_status = state.repeat;
+        let loop_state: LoopStatus = if loop_status {
+            LoopStatus::Track
+        } else {
+            LoopStatus::None
+        };
+
+        Ok(loop_state)
     }
 
     async fn set_loop_status(&self, loop_status: LoopStatus) -> Result<()> {
-        println!("SetLoopStatus({loop_status})");
+        if let Ok(mut state) = self.state.lock() {
+            match loop_status {
+                LoopStatus::Track => state.repeat = true,
+                LoopStatus::None => state.repeat = false,
+                _ => state.repeat = false,
+            }
+        }
         Ok(())
     }
 
@@ -152,15 +194,22 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn metadata(&self) -> fdo::Result<Metadata> {
-        Ok(Metadata::default())
+        let state = self.state.lock().unwrap();
+        let metadata = state.metadata.clone();
+        Ok(metadata)
     }
 
     async fn volume(&self) -> fdo::Result<Volume> {
-        Ok(Volume::default())
+        let state = self.state.lock().unwrap();
+        let volume = state.volume as f64;
+        Ok(volume)
     }
 
     async fn set_volume(&self, volume: Volume) -> Result<()> {
-        let _ = self.tx.send(MprisState::Volume(volume));
+        if let Ok(mut state) = self.state.lock() {
+            state.volume = volume as u64;
+        }
+
         Ok(())
     }
 
@@ -181,7 +230,10 @@ impl PlayerInterface for MprisHandler {
     }
 
     async fn seek(&self, offset: Time) -> fdo::Result<()> {
-        let _ = self.tx.send(MprisState::Seek(offset.as_secs()));
+        if let Ok(mut state) = self.state.lock() {
+            state.mpris_pos = offset.as_secs() as u64;
+        }
+
         Ok(())
     }
 

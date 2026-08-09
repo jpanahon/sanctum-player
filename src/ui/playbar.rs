@@ -1,8 +1,15 @@
 use crate::Sanctum;
-use crate::format_timestamp;
-use crate::load_cover_art;
+use crate::cache::load_cover_art;
+use crate::utils::format_timestamp;
 
-pub fn playbar(ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
+pub fn playbar(ui: &mut egui::Ui, idle: bool, sanc: &mut Sanctum) {
+    let play_symbols = ["▶", "⏸"];
+    let play_state = if idle {
+        play_symbols[1]
+    } else {
+        play_symbols[0]
+    };
+
     let play_button =
         egui::Button::new(egui::RichText::new(play_state).font(egui::FontId::proportional(18.0)))
             .min_size(egui::Vec2::new(40.0, 40.0))
@@ -72,7 +79,7 @@ pub fn playbar(ui: &mut egui::Ui, play_state: &str, sanc: &mut Sanctum) {
                 }
 
                 if ui.add(play_button).clicked() {
-                    sanc.player.playback(&sanc.mpris);
+                    sanc.player.playback();
                 }
 
                 if ui.add(skip_button).clicked() {
