@@ -25,7 +25,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             }
 
             if search.ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-                sanc.player.set_index(sanc.search.results[0].0);
+                sanc.player.set_index(sanc.search.results[0].0, &sanc.songs);
                 sanc.search.close_modal();
             }
 
@@ -49,7 +49,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                                 );
 
                                 if song_title.clicked() {
-                                    sanc.player.set_index(*index);
+                                    sanc.player.set_index(*index, &sanc.songs);
                                     sanc.search.modal = false;
                                 }
 

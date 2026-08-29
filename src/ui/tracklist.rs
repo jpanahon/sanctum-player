@@ -1,7 +1,7 @@
 use crate::Sanctum;
 use crate::cache::load_cover_art;
 use crate::playlist::{Sort, sort_songs};
-use crate::utils::format_timestamp;
+use crate::utils::{format_date, format_timestamp};
 use egui_extras::{Column, TableBuilder};
 
 pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
@@ -204,7 +204,7 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                             let song_title = ui.add(song_title);
 
                             if song_title.clicked() {
-                                sanc.player.set_index(*view_index);
+                                sanc.player.set_index(*view_index, &sanc.songs);
                             }
 
                             song_title.context_menu(|ui| {
@@ -235,8 +235,9 @@ pub fn playlist(ui: &mut egui::Ui, sanc: &mut Sanctum) {
 
                     row.col(|ui| {
                         ui.horizontal_centered(|ui| {
+                            let created_date = format_date(song.created);
                             ui.label(
-                                egui::RichText::new(song.created_date.to_string())
+                                egui::RichText::new(created_date)
                                     .font(egui::FontId::proportional(18.0)),
                             );
                         });

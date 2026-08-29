@@ -115,10 +115,8 @@ impl eframe::App for Sanctum {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint();
 
-        while let Ok((album, image_path)) = self.cache.rx.try_recv() {
-            self.cache.covers.insert(album.clone(), image_path);
-            self.cache.loading_covers.remove(&album);
-        }
+        self.cache.update(ctx);
+
         if !self.search.modal {
             ctx.input(|i| {
                 for event in &i.events {

@@ -56,6 +56,7 @@ impl Default for PlayerState {
         }
     }
 }
+
 pub struct Player {
     pub _stream_handle: rodio::OutputStream,
     pub sink: rodio::Sink,
@@ -64,6 +65,7 @@ pub struct Player {
     pub prev_index: usize,
     pub queue: Vec<usize>,
     pub skip: bool,
+    pub previous_flag: bool,
     pub last_skip: Instant,
     pub mode: PlaybackMode,
     pub state: Arc<Mutex<PlayerState>>,
@@ -83,6 +85,7 @@ impl Player {
             prev_index: 0,
             track_pos: 0,
             skip: false,
+            previous_flag: false,
             last_skip: Instant::now(),
             queue: Vec::new(),
             mode: PlaybackMode::Normal,
@@ -96,7 +99,7 @@ impl Player {
         event: &egui::Event,
         volume: &mut u32,
         config: &mut Config,
-        songs: &[Song],
+        _songs: &[Song],
     ) {
         if let egui::Event::Key {
             key: egui::Key::Space,
@@ -116,7 +119,7 @@ impl Player {
                 ..
             } = event
             {
-                self.previous(songs);
+                self.previous();
             }
 
             if let egui::Event::Key {
@@ -126,17 +129,17 @@ impl Player {
                 ..
             } = event
             {
-                self.skip(songs);
+                self.skip();
             }
 
             if i.key_pressed(egui::Key::ArrowUp) {
-                *volume += 1;
+                *volume = volume.saturating_add(1);
                 self.volume(*volume);
                 config.set_volume(*volume);
             }
 
             if i.key_pressed(egui::Key::ArrowDown) {
-                *volume -= 1;
+                *volume = volume.saturating_sub(1);
                 self.volume(*volume);
                 config.set_volume(*volume);
             }
@@ -162,17 +165,17 @@ impl Player {
             }
         }
     }
-    pub fn set_index(&mut self, index: usize) {
+
+    pub fn set_index(&mut self, index: usize, songs: &[Song]) {
+        if index >= songs.len() {
+            return;
+        }
+
         self.current_index = index;
         self.prev_index = index;
 
-        if self.sink.is_paused() {
-            self.resume();
-        }
-
-        if !self.idle() {
-            self.sink.skip_one();
-        }
+        self.play(songs);
+        self.resume();
     }
 
     pub fn idle(&self) -> bool {
@@ -188,7 +191,6 @@ impl Player {
             return;
         }
 
-        // Safety guard against out-of-bounds indices
         if self.current_index >= songs.len() {
             self.current_index = 0;
         }
@@ -196,17 +198,23 @@ impl Player {
         self.track_pos = self.sink.get_pos().as_secs();
 
         let manual_skip = self.skip;
+        let manual_prev = self.previous_flag;
         let cooldown_done = self.last_skip.elapsed() > Duration::from_millis(300);
 
-        // Audio sink is empty and cooldown has passed = track naturally finished
-        let track_finished = !manual_skip && self.sink.empty() && cooldown_done;
+        let track_finished = !manual_skip && !manual_prev && self.sink.empty() && cooldown_done;
 
-        if track_finished || manual_skip {
+        if track_finished || manual_skip || manual_prev {
             self.skip = false;
+            self.previous_flag = false;
             self.last_skip = Instant::now();
 
-            // 1. Advance the index based on queue or playback mode
-            if !self.queue.is_empty() {
+            if manual_prev {
+                if self.current_index == 0 {
+                    self.current_index = songs.len() - 1;
+                } else {
+                    self.current_index -= 1;
+                }
+            } else if !self.queue.is_empty() {
                 let queued_idx = self.queue.remove(0);
                 self.current_index = if queued_idx < songs.len() {
                     queued_idx
@@ -223,8 +231,6 @@ impl Player {
                         self.current_index = rng.random_range(0..songs.len());
                     }
                     PlaybackMode::Repeat => {
-                        // If manually skipped in repeat mode, move to next song;
-                        // if track finished naturally, current_index stays the same.
                         if manual_skip {
                             self.current_index = (self.current_index + 1) % songs.len();
                         }
@@ -232,8 +238,12 @@ impl Player {
                 }
             }
 
-            // 2. Always start playing the newly selected track!
             self.play(songs);
+
+            if self.idle() {
+                self.resume();
+            }
+
             self.prev_index = self.current_index;
         }
     }
@@ -244,6 +254,10 @@ impl Player {
         cache: &SancCache,
         songs: &[Song],
     ) {
+        if songs.is_empty() {
+            return;
+        }
+
         let song = &songs[self.current_index];
 
         let mut trigger_skip = false;
@@ -277,7 +291,6 @@ impl Player {
 
             if state.player_pos != self.track_pos {
                 state.player_pos = self.track_pos;
-                state.mpris_pos = self.track_pos;
             }
 
             if state.mpris_pos != state.player_pos {
@@ -286,12 +299,10 @@ impl Player {
                 pos_changed = true;
             }
 
-            state.mode = if matches!(self.mode, PlaybackMode::Normal) {
-                PlaybackMode::Normal
-            } else if matches!(self.mode, PlaybackMode::Repeat) {
-                PlaybackMode::Repeat
-            } else {
-                PlaybackMode::Shuffled
+            state.mode = match self.mode {
+                PlaybackMode::Normal => PlaybackMode::Normal,
+                PlaybackMode::Repeat => PlaybackMode::Repeat,
+                PlaybackMode::Shuffled => PlaybackMode::Shuffled,
             };
 
             new_metadata = Metadata::builder()
@@ -302,8 +313,8 @@ impl Player {
                 .trackid(TrackId::NO_TRACK)
                 .build();
 
-            if let Some(cover_art) = cache.covers.get(&song.album) {
-                new_metadata.set_art_url(Some(format!("file://{}", cover_art)));
+            if let Some(cover_art) = cache.disk_paths.get(&song.album) {
+                new_metadata.set_art_url(Some(format!("file://{}", cover_art.display())));
             }
 
             if state.metadata != new_metadata {
@@ -313,13 +324,11 @@ impl Player {
 
             if state.skip {
                 state.skip = false;
-                self.skip = true;
                 trigger_skip = true;
             }
 
             if state.previous {
                 state.previous = false;
-                self.skip = true;
                 trigger_previous = true;
             }
 
@@ -327,6 +336,7 @@ impl Player {
                 state.play = false;
                 trigger_play = true;
             }
+
             if state.stop && !self.idle() {
                 state.stop = false;
                 trigger_stop = true;
@@ -344,11 +354,11 @@ impl Player {
         }
 
         if trigger_skip {
-            self.skip(songs);
+            self.skip();
         }
 
         if trigger_previous {
-            self.previous(songs);
+            self.previous();
         }
 
         if trigger_play {
@@ -371,14 +381,14 @@ impl Player {
             futures::executor::block_on(
                 mpris.properties_changed([Property::PlaybackStatus(new_status)]),
             )
-            .expect("Failed to update PlaybackStatus to Playing!");
+            .expect("Failed to update PlaybackStatus!");
         }
 
         if metadata_changed {
             futures::executor::block_on(
                 mpris.properties_changed([Property::Metadata(new_metadata)]),
             )
-            .expect("Failed to update PlaybackStatus to Playing!");
+            .expect("Failed to update Metadata!");
         }
 
         if pos_changed {
@@ -412,38 +422,26 @@ impl Player {
     }
 
     fn play(&mut self, songs: &[Song]) {
+        if songs.is_empty() || self.current_index >= songs.len() {
+            return;
+        }
+
         let song = &songs[self.current_index];
-        let song_path = &song.path;
-
-        let song_file = std::io::BufReader::new(
-            std::fs::File::open(song_path)
-                .unwrap_or_else(|_| panic!("Unable to open file: {song_path}")),
-        );
-        let decoder = rodio::Decoder::try_from(song_file).expect("Unable to make decoder!");
-
-        self.sink.append(decoder);
+        if let Ok(file) = std::fs::File::open(&song.path) {
+            let song_file = std::io::BufReader::new(file);
+            if let Ok(decoder) = rodio::Decoder::try_from(song_file) {
+                self.sink.clear();
+                self.sink.append(decoder);
+            }
+        }
     }
 
-    pub fn skip(&mut self, songs: &[Song]) {
-        if !self.queue.is_empty() {
-            self.current_index = self.queue.remove(0);
-        } else if (self.current_index + 1) >= songs.len() {
-            self.current_index = 0;
-        } else {
-            self.current_index += 1;
-        }
-
+    pub fn skip(&mut self) {
         self.skip = true;
     }
 
-    pub fn previous(&mut self, songs: &[Song]) {
-        if self.current_index == 0 {
-            self.current_index = songs.len() - 1;
-        } else {
-            self.current_index -= 1;
-        }
-
-        self.skip = true;
+    pub fn previous(&mut self) {
+        self.previous_flag = true;
     }
 
     pub fn volume(&mut self, new_volume: u32) {
@@ -465,11 +463,11 @@ impl Player {
     }
 
     pub fn set_shuffle(&mut self, toggle: bool) {
-        if toggle {
-            self.mode = PlaybackMode::Shuffled;
+        self.mode = if toggle {
+            PlaybackMode::Shuffled
         } else {
-            self.mode = PlaybackMode::Normal;
-        }
+            PlaybackMode::Normal
+        };
     }
 
     pub fn repeat(&mut self) {
@@ -481,22 +479,20 @@ impl Player {
     }
 
     pub fn is_repeat(&self) -> bool {
-        let is_repeat = matches!(self.mode, PlaybackMode::Repeat);
-        is_repeat
+        matches!(self.mode, PlaybackMode::Repeat)
     }
 
     pub fn is_shuffled(&self) -> bool {
-        let is_shuffled = matches!(self.mode, PlaybackMode::Shuffled);
-        is_shuffled
+        matches!(self.mode, PlaybackMode::Shuffled)
     }
 
     pub fn seek(&mut self) {
         let new_pos = Duration::from_secs(self.track_pos);
-        self.sink.try_seek(new_pos).expect("Can't seek!");
+        let _ = self.sink.try_seek(new_pos);
     }
 
     pub fn seek_to(&mut self, seconds: i64) {
         let new_pos = Duration::from_secs(seconds as u64);
-        self.sink.try_seek(new_pos).expect("Can't seek!");
+        let _ = self.sink.try_seek(new_pos);
     }
 }

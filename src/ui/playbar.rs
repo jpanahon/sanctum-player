@@ -75,7 +75,7 @@ pub fn playbar(ui: &mut egui::Ui, idle: bool, sanc: &mut Sanctum) {
                 }
 
                 if ui.add(prev_button).clicked() {
-                    sanc.player.previous(&sanc.songs);
+                    sanc.player.previous();
                 }
 
                 if ui.add(play_button).clicked() {
@@ -83,7 +83,7 @@ pub fn playbar(ui: &mut egui::Ui, idle: bool, sanc: &mut Sanctum) {
                 }
 
                 if ui.add(skip_button).clicked() {
-                    sanc.player.skip(&sanc.songs);
+                    sanc.player.skip();
                 }
 
                 if ui.add(shufl_button).clicked() {

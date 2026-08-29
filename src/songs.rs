@@ -1,75 +1,87 @@
-use crate::utils::format_date;
 use lofty::config::{ParseOptions, ParsingMode};
 use lofty::error::LoftyError;
 use lofty::file::TaggedFile;
 use lofty::prelude::*;
 use lofty::probe::Probe;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-pub struct Song {
-    pub title: String,
-    pub artist: String,
-    pub album: String,
-    pub search_key: String,
-    pub path: String,
-    pub created_date: String,
+use ustr::Ustr;
 
+pub struct Song {
+    pub title: Ustr,
+    pub artist: Ustr,
+    pub album: Ustr,
+    pub search_key: Ustr,
+    pub path: PathBuf,
     pub duration: u64,
     pub created: SystemTime,
 }
 
-pub fn get_tags(path: PathBuf, options: ParseOptions) -> Result<TaggedFile, LoftyError> {
-    let tag_file = Probe::open(path.as_path())?.options(options).read()?;
-    Ok(tag_file)
+pub fn get_tags(path: &Path, options: ParseOptions) -> Result<TaggedFile, LoftyError> {
+    Probe::open(path)?.options(options).read()
 }
 
-pub fn load_songs(main_dir: String) -> Vec<Song> {
-    let mut songs: Vec<Song> = Vec::new();
+pub fn load_songs(main_dir: impl AsRef<Path>) -> Vec<Song> {
+    let song_entries: Vec<_> = match std::fs::read_dir(main_dir) {
+        Ok(dir) => dir.filter_map(Result::ok).collect(),
+        Err(e) => {
+            eprintln!("Failed to open music directory: {e}");
+            return Vec::new();
+        }
+    };
+
+    let mut songs: Vec<Song> = Vec::with_capacity(song_entries.len());
     let parsing_options = ParseOptions::new().parsing_mode(ParsingMode::Relaxed);
 
-    for entry in std::fs::read_dir(main_dir).expect("Music folder not found!") {
-        let entry = entry.expect("Entries found!");
+    for entry in song_entries {
         let path = entry.path();
 
-        let song_path = path.display().to_string();
+        // Skip directories and non-files
+        if !path.is_file() {
+            continue;
+        }
 
-        match get_tags(path, parsing_options) {
+        match get_tags(&path, parsing_options) {
             Ok(tag_file) => {
-                let tag = tag_file
-                    .primary_tag()
-                    .or_else(|| tag_file.first_tag())
-                    .expect(&format!("No tags found!: {}", song_path));
+                let tag = tag_file.primary_tag().or_else(|| tag_file.first_tag());
 
-                let properties = tag_file.properties();
+                let title_cow = tag.as_ref().and_then(|t| t.title());
+                let artist_cow = tag.as_ref().and_then(|t| t.artist());
+                let album_cow = tag.as_ref().and_then(|t| t.album());
 
-                let duration = properties.duration();
-                let seconds = duration.as_secs();
+                let title = title_cow.as_deref().unwrap_or("Unknown");
+                let artist = artist_cow.as_deref().unwrap_or("Unknown");
+                let album = album_cow.as_deref().unwrap_or("Unknown");
 
-                let metadata = entry.metadata().expect("No metadata found!");
-                let created_time = metadata.created().ok().unwrap();
-                let created_date = format_date(created_time);
+                let duration = tag_file.properties().duration().as_secs();
+
+                // Fall back to epoch time if creation date is unavailable on the OS
+                let created_time = entry
+                    .metadata()
+                    .and_then(|m| m.created())
+                    .unwrap_or(SystemTime::UNIX_EPOCH);
+
+                let search_str = format!("{title} {artist} {album}").to_lowercase();
 
                 let song = Song {
-                    title: tag.title().as_deref().unwrap_or("Unknown").to_string(),
-                    artist: tag.artist().as_deref().unwrap_or("Unknown").to_string(),
-                    album: tag.album().as_deref().unwrap_or("Unknown").to_string(),
-                    path: song_path,
-                    duration: seconds,
-                    search_key: format!(
-                        "{} {} {}",
-                        tag.title().as_deref().unwrap_or("Unknown").to_lowercase(),
-                        tag.artist().as_deref().unwrap_or("Unknown").to_lowercase(),
-                        tag.album().as_deref().unwrap_or("Unknown").to_lowercase(),
-                    ),
+                    title: Ustr::from(title),
+                    artist: Ustr::from(artist),
+                    album: Ustr::from(album),
+                    search_key: Ustr::from(&search_str),
+                    path,
+                    duration,
                     created: created_time,
-                    created_date,
                 };
 
                 songs.push(song);
             }
-            Err(e) => eprintln!("Tag parse error for {:?}: {e}", song_path),
+            Err(e) => eprintln!(
+                "Skipping invalid or untagged file {:?}: {e}",
+                path.display()
+            ),
         }
     }
 
+    songs.shrink_to_fit();
     songs
 }

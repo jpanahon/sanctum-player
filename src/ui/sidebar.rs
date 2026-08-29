@@ -16,7 +16,7 @@ pub fn sidebar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
             sanc.songs
                 .sort_unstable_by_key(|item| std::cmp::Reverse(item.created));
 
-            sanc.player.set_index(0);
+            sanc.player.set_index(0, &sanc.songs);
         }
     }
 }
