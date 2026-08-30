@@ -37,6 +37,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_maximized(true),
+        renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
 
