@@ -35,11 +35,16 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() -> eframe::Result {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_maximized(true),
+    let icon_data = eframe::icon_data::from_png_bytes(include_bytes!(".././assets/icon.png"))
+        .expect("The icon data must be valid");
+
+    let mut options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_maximized(true).with_app_id("sanctum"),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
+
+    options.viewport.icon = Some(Arc::new(icon_data));
 
     eframe::run_native(
         "Sanctum Player",
