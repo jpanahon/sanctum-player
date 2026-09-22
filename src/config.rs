@@ -1,4 +1,7 @@
-use crate::Playlist;
+use crate::playlist::{Playlist, Sort};
+use std::fs;
+use std::fs::File;
+use std::io::Write;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub struct Config {
@@ -44,5 +47,29 @@ impl Config {
 
     pub fn update_playlist(&mut self, playlist: Playlist) {
         self.playlists[self.current_playlist] = playlist;
+    }
+
+    pub fn create(&self, playlist_name: String, playlist_path: String) {
+        let new_config = Self {
+            current_playlist: 0,
+            playlists: [Playlist {
+                name: playlist_name,
+                path: playlist_path,
+                sort_order: Sort::Track { reverse: false },
+            }]
+            .to_vec(),
+            last_track_index: 0,
+            volume: 50,
+            cache_path: String::from("~/.cache/sanctum/").to_owned(),
+        };
+
+        let config_json = serde_json::to_string(&new_config).expect("Can't parse to string");
+
+        fs::create_dir("~/.config/sanctum/").ok();
+
+        let mut config_file =
+            File::create("~/.config/sanctum/config.json").expect("Can't make new config file");
+
+        config_file.write_all(config_json.as_bytes()).unwrap();
     }
 }

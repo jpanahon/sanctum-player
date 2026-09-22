@@ -36,7 +36,7 @@ pub fn search_bar(ui: &mut egui::Ui, sanc: &mut Sanctum) {
                         for (index, _) in sanc.search.results.iter().take(50) {
                             let song = &sanc.songs[*index];
                             ui.horizontal_wrapped(|ui| {
-                                load_cover_art(ui, &mut sanc.cache, &song);
+                                load_cover_art(ui, &mut sanc.cache, song);
                                 let song_title = ui.add(
                                     egui::Button::new(
                                         egui::RichText::new(format!(

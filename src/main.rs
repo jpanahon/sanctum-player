@@ -29,6 +29,8 @@ use search::Search;
 pub mod songs;
 use songs::Song;
 
+use std::path::PathBuf;
+
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -39,7 +41,9 @@ fn main() -> eframe::Result {
         .expect("The icon data must be valid");
 
     let mut options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_maximized(true).with_app_id("sanctum"),
+        viewport: egui::ViewportBuilder::default()
+            .with_maximized(true)
+            .with_app_id("sanctum"),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };
@@ -69,7 +73,9 @@ pub struct Sanctum {
 impl Sanctum {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
-        let config_file = std::fs::read_to_string("config.json").expect("Can't find config file!");
+        let home = std::env::var("HOME").expect("HOME environment variable not set");
+        let config_path = PathBuf::from(home).join(".config/sanctum/config.json");
+        let config_file = std::fs::read_to_string(&config_path).expect("Can't find config file!");
         let config: Config = serde_json::from_str(config_file.as_str()).expect("Can't parse JSON!");
         let playlists = config.get_playlists().clone();
 

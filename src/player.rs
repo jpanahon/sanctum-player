@@ -306,9 +306,9 @@ impl Player {
             };
 
             new_metadata = Metadata::builder()
-                .title(song.title.clone())
-                .artist(vec![song.artist.clone()])
-                .album(song.album.clone())
+                .title(song.title)
+                .artist(vec![song.artist])
+                .album(song.album)
                 .length(Time::from_secs(song.duration as i64))
                 .trackid(TrackId::NO_TRACK)
                 .build();
