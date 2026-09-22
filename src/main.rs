@@ -186,7 +186,11 @@ impl eframe::App for Sanctum {
             self.config.update_playlist(self.current_playlist.clone());
             let new_config =
                 serde_json::to_string_pretty(&self.config).expect("Can't export config!");
-            std::fs::write("config.json", new_config).expect("Can't update config!");
+
+            let home = std::env::var("HOME").expect("HOME environment variable not set");
+            let config_path = PathBuf::from(home).join(".config/sanctum/config.json");
+
+            std::fs::write(config_path, new_config).expect("Can't update config!");
         }
     }
 }
