@@ -479,11 +479,11 @@ impl Player {
     }
 
     pub fn is_repeat(&self) -> bool {
-        matches!(self.mode, PlaybackMode::Repeat)
+        matches!(self.mode, PlaybackMode::Repeat) as bool
     }
 
     pub fn is_shuffled(&self) -> bool {
-        matches!(self.mode, PlaybackMode::Shuffled)
+        matches!(self.mode, PlaybackMode::Shuffled) as bool
     }
 
     pub fn seek(&mut self) {
